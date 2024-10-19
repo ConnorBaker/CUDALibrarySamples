@@ -27,30 +27,40 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 # 
 
-function(add_cublas_example GROUP_TARGET EXAMPLE_NAME EXAMPLE_SOURCES)
-add_executable(${EXAMPLE_NAME} ${EXAMPLE_SOURCES})
-set_property(TARGET ${EXAMPLE_NAME} PROPERTY CUDA_ARCHITECTURES OFF)
-target_include_directories(${EXAMPLE_NAME}
-    PUBLIC
-        ${CUDA_INCLUDE_DIRS}
-)
-target_link_libraries(${EXAMPLE_NAME}
-    PUBLIC
-        cublas
-)
-set_target_properties(${EXAMPLE_NAME} PROPERTIES
-    POSITION_INDEPENDENT_CODE ON
+function(add_sample_cublasLt)
+
+if(NOT DEFINED PROJECT_NAME OR "${PROJECT_NAME}" STREQUAL "")
+    message(FATAL_ERROR "PROJECT_NAME is not defined or is empty")
+endif()
+
+find_package(CUDAToolkit REQUIRED)
+
+set(CMAKE_CXX_STANDARD 11)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(EXE_NAME "sample_cublasLt_${PROJECT_NAME}")
+
+add_executable(${EXE_NAME}
+    "${CMAKE_CURRENT_SOURCE_DIR}/main.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/${EXE_NAME}.cu"
 )
 
-# Install example
+set_target_properties(${EXE_NAME} PROPERTIES LINK_WHAT_YOU_USE TRUE)
+
+target_include_directories(${EXE_NAME}
+    PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/../Common"
+        ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES}
+)
+
+target_link_libraries(${EXE_NAME}
+    PUBLIC
+        CUDA::cudart
+        CUDA::cublasLt
+)
+
 install(
-    TARGETS ${EXAMPLE_NAME}
-    RUNTIME
-    DESTINATION ${cublas_examples_BINARY_INSTALL_DIR}
-    PERMISSIONS OWNER_EXECUTE OWNER_WRITE OWNER_READ GROUP_EXECUTE GROUP_READ WORLD_EXECUTE WORLD_READ
+    TARGETS ${EXE_NAME}
+    RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}"
 )
 
-add_dependencies(${GROUP_TARGET} ${EXAMPLE_NAME})
 endfunction()
-
-add_custom_target(cublas_examples)

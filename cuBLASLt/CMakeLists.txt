@@ -8,15 +8,18 @@
 # license agreement from NVIDIA CORPORATION is strictly prohibited.
 # 
 
-cmake_minimum_required(VERSION 3.10.0)
+cmake_minimum_required(VERSION 3.18.0 FATAL_ERROR)
 
-project(cublasLtSamples)
+set(path "${CMAKE_CURRENT_SOURCE_DIR}")
+cmake_path(GET path FILENAME PROJECT_NAME)
 
-add_subdirectory(LtSgemm)
-add_subdirectory(LtFp8Matmul)
+project("${PROJECT_NAME}" LANGUAGES CXX CUDA)
+
 add_subdirectory(LtDgemmPresetAlgo)
-add_subdirectory(LtIgemmTensor)
+add_subdirectory(LtFp8Matmul)
 add_subdirectory(LtHSHgemmStridedBatchSimple)
-add_subdirectory(LtSgemmCustomFind)
+add_subdirectory(LtIgemmTensor)
 add_subdirectory(LtPlanarComplex)
+add_subdirectory(LtSgemm)
+add_subdirectory(LtSgemmCustomFind)
 add_subdirectory(LtSgemmSimpleAutoTuning)
