@@ -1,0 +1,130 @@
+{
+  backendStdenv,
+  cmake,
+  cuda_cudart,
+  cuda_nvcc,
+  cudaMajorMinorVersion,
+  cudaOlder,
+  cuFFT,
+  lib,
+  libcufft,
+  runCommand,
+}:
+let
+  inherit (builtins) readDir;
+  inherit (lib.attrsets)
+    attrNames
+    genAttrs
+    recurseIntoAttrs
+    ;
+  inherit (lib.fileset) toSource unions;
+  inherit (lib.lists) elem filter;
+  inherit (lib.meta) getExe;
+
+  sampleNames =
+    let
+      files = readDir ./.;
+      matchingDirNames = filter (
+        filename:
+        files.${filename} == "directory"
+        && !(elem filename [
+          "cmake"
+          "utils"
+        ])
+      ) (attrNames files);
+    in
+    matchingDirNames;
+
+  buildSample =
+    sampleName:
+    backendStdenv.mkDerivation (finalAttrs: {
+      __structuredAttrs = true;
+      strictDeps = true;
+
+      name = "cuda${cudaMajorMinorVersion}-${finalAttrs.pname}-${finalAttrs.version}";
+      pname = "cuda-library-samples-cuFFT-${sampleName}";
+      version = "0-unstable-2024-10-15";
+
+      src = toSource {
+        root = ./.;
+        fileset = unions [
+          ./cmake
+          ./utils
+          (./. + "/${sampleName}")
+        ];
+      };
+
+      # cmakeDir is relative to cmakeBuildDir, which is by default `build`, so we need to go up one directory.
+      cmakeBuildDir = "build";
+      cmakeDir = "../${sampleName}";
+
+      # TODO: get_set doesn't link against cudart, so we need to patch it with autoAddDriverRunpath.
+      # TODO: Rewrite the CMakeLists.txt file to link against cudart and document that this is one use case of autoAddDriverRunpath.
+      nativeBuildInputs = [
+        cmake
+        cuda_nvcc
+      ];
+
+      buildInputs = [
+        cuda_cudart
+        libcufft
+      ];
+
+      passthru.tests.test =
+        runCommand "cuFFT-${sampleName}"
+          {
+            __structuredAttrs = true;
+            strictDeps = true;
+            nativeBuildInputs = [ cuFFT.${sampleName} ];
+            requiredSystemFeatures = [ "cuda" ];
+          }
+          (
+            # Make a temporary directory for the tests and error out if anything fails.
+            ''
+              set -euo pipefail
+              export HOME="$(mktemp --directory)"
+              trap 'rm -rf -- "''${HOME@Q}"' EXIT
+            ''
+            # Run the tests.
+            + ''
+              echo "Running cuFFT.${sampleName}..."
+              if "${getExe cuFFT.${sampleName}}"
+              then
+                echo "cuFFT.${sampleName} passed"
+                touch "$out"
+              else
+                echo "cuFFT.${sampleName} failed"
+                exit 1
+              fi
+            ''
+          );
+
+      meta = {
+        description = "examples of using libraries using CUDA";
+        longDescription = ''
+          CUDA Library Samples contains examples demonstrating the use of
+          features in the math and image processing libraries cuBLAS, cuTENSOR,
+          cuSPARSE, cuSOLVER, cuFFT, cuRAND, NPP and nvJPEG.
+        '';
+        mainProgram = "${sampleName}_example";
+
+        broken =
+          # These two fail on CUDA 11.8 
+          (
+            cudaOlder "12"
+            && elem sampleName [
+              "3d_mgpu_c2c"
+              "3d_mgpu_r2c_c2r"
+            ]
+          )
+          # Untested/unimplemented
+          || elem sampleName [
+            "lto_callback_window_1d"
+            "lto_ea"
+          ];
+        license = lib.licenses.bsd3;
+        maintainers = with lib.maintainers; [ obsidian-systems-maintenance ] ++ lib.teams.cuda.members;
+      };
+    });
+in
+recurseIntoAttrs (genAttrs sampleNames buildSample)
