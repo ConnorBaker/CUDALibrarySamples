@@ -37,6 +37,7 @@
         filterAttrs
         getAttr
         mergeAttrsList
+        recurseIntoAttrs
         ;
       inherit (inputs.nixpkgs.lib.customisation) makeScope;
       inherit (inputs.nixpkgs.lib.lists) concatMap map optionals;
@@ -48,9 +49,9 @@
       inherit (inputs.cuda-packages.cuda-lib.utils) flattenDrvTree;
 
       overlay =
-        final: prev:
+        _: prev:
         let
-          overrideScopeFn = cudaFinal: cudaPrev: {
+          overrideScopeFn = cudaFinal: _: {
             cuda-library-samples = makeScope cudaFinal.newScope (
               cudaLibrarySamplesFinal:
               packagesFromDirectoryRecursive {
@@ -148,7 +149,20 @@
               "${device.name}Pkgs" = pkgs;
               "${attrName}" = linkFarm attrName (flattenDrvTree {
                 attrs = pkgs."cudaPackages_${cudaMajorVersion}".cuda-library-samples;
-                includeFunc = if test then _: drv: drv.passthru.tests.test else _: drv: drv;
+                doTrace = false;
+                includeFunc =
+                  if test then
+                    name: drv:
+                    drv.passthru.test or (
+                      if drv ? passthru.tests then
+                        linkFarm "${name}-tests" (flattenDrvTree {
+                          attrs = recurseIntoAttrs drv.passthru.tests;
+                        })
+                      else
+                        drv
+                    )
+                  else
+                    _: drv: drv;
               });
             };
 

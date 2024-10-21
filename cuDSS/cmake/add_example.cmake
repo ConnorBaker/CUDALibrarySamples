@@ -1,12 +1,12 @@
-# 
-# Copyright 2023 NVIDIA Corporation.  All rights reserved.
-# 
+#
+# Copyright 2023-2024 NVIDIA Corporation.  All rights reserved.
+#
 # NOTICE TO LICENSEE:
-# 
+#
 # This source code and/or documentation ("Licensed Deliverables") are
 # subject to NVIDIA intellectual property rights under U.S. and
 # international Copyright laws.
-# 
+#
 # These Licensed Deliverables contained herein is PROPRIETARY and
 # CONFIDENTIAL to NVIDIA and is being provided under the terms and
 # conditions of a form of NVIDIA software license agreement by and
@@ -15,7 +15,7 @@
 # the contrary in the License Agreement, reproduction or disclosure
 # of the Licensed Deliverables to any third party without the express
 # written consent of NVIDIA is prohibited.
-# 
+#
 # NOTWITHSTANDING ANY TERMS OR CONDITIONS TO THE CONTRARY IN THE
 # LICENSE AGREEMENT, NVIDIA MAKES NO REPRESENTATION ABOUT THE
 # SUITABILITY OF THESE LICENSED DELIVERABLES FOR ANY PURPOSE.  IT IS
@@ -30,7 +30,7 @@
 # WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS
 # ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE
 # OF THESE LICENSED DELIVERABLES.
-# 
+#
 # U.S. Government End Users.  These Licensed Deliverables are a
 # "commercial item" as that term is defined at 48 C.F.R. 2.101 (OCT
 # 1995), consisting of "commercial computer software" and "commercial
@@ -40,65 +40,52 @@
 # 48 C.F.R. 227.7202-1 through 227.7202-4 (JUNE 1995), all
 # U.S. Government End Users acquire the Licensed Deliverables with
 # only those rights set forth herein.
-# 
+#
 # Any use of the Licensed Deliverables in individual and commercial
 # software must include, in the user documentation and internal
 # comments to the code, the above Disclaimer and U.S. Government End
 # Users Notice.
-# 
+#
 
-cmake_minimum_required(VERSION 3.16)
+function(add_example)
 
-project(cublasmp_samples LANGUAGES CXX CUDA)
+if(NOT DEFINED EXAMPLE_NAME OR "${EXAMPLE_NAME}" STREQUAL "")
+    message(FATAL_ERROR "EXAMPLE_NAME is not defined or is empty")
+endif()
 
-include(FindPkgConfig)
-pkg_check_modules(MPI_CXX REQUIRED ompi-cxx)
 find_package(CUDAToolkit REQUIRED)
+find_package(cudss REQUIRED)
 
-set(CMAKE_CUDA_STANDARD 11)
+set(CMAKE_CXX_STANDARD 11)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+set(CMAKE_CUDA_STANDARD          11)
 set(CMAKE_CUDA_STANDARD_REQUIRED ON)
+set(CMAKE_CUDA_EXTENSIONS        OFF)
 
-if (CAL_MPI_INCLUDE_PATH AND CAL_MPI_LIBRARIES)
-    add_definitions(-DUSE_CAL_MPI)
-endif ()
+set(EXE_NAME "${EXAMPLE_NAME}_example")
 
-function(build_sample sample_name)
-    add_executable(${sample_name} ${sample_name}.cu)
+set_source_files_properties("${CMAKE_CURRENT_SOURCE_DIR}/${EXAMPLE_NAME}.cpp" PROPERTIES LANGUAGE CUDA)
 
-    set_target_properties(${sample_name} PROPERTIES CUDA_RESOLVE_DEVICE_SYMBOLS ON)
-    set_target_properties(${sample_name} PROPERTIES LINK_WHAT_YOU_USE TRUE)
+add_executable(${EXE_NAME} "${CMAKE_CURRENT_SOURCE_DIR}/${EXAMPLE_NAME}.cpp")
 
-    target_include_directories(${sample_name} PUBLIC
-        ${CMAKE_CURRENT_SOURCE_DIR}
-        ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES}
-        ${MPI_CXX_INCLUDE_DIRS}
-        ${CAL_INCLUDE_DIRECTORIES}
-        ${CUBLASMP_INCLUDE_DIRECTORIES}
-        ${CAL_MPI_INCLUDE_PATH}
-    )
+set_target_properties(${EXE_NAME} PROPERTIES LINK_WHAT_YOU_USE TRUE)
 
-    target_link_libraries(${sample_name} PUBLIC
-        cal
-        cudart
-        cublasmp
-        cal
-        ${MPI_CXX_LIBRARIES}
-        ${NVSHMEM_HOST_LIBRARIES}
-        ${NVSHMEM_DEVICE_LIBRARIES}
-        nvidia-ml
-        m
-        ${CAL_MPI_LIBRARIES}
-    )
+target_compile_options(${EXE_NAME}
+    PRIVATE
+        "$<$<CONFIG:Debug>:-lineinfo -g>"
+        "$<$<CONFIG:RelWithDebInfo>:-lineinfo -g>"
+)
 
-    install(
-        TARGETS ${sample_name}
-        DESTINATION "${CMAKE_INSTALL_BINDIR}"
-    )
-endfunction(build_sample)
+target_link_libraries(${EXE_NAME}
+    PUBLIC
+        CUDA::cudart
+        cudss
+)
 
-build_sample("pgemm")
-build_sample("pmatmul")
-build_sample("ptrsm")
-build_sample("psyrk")
-build_sample("pgeadd")
-build_sample("ptradd")
+install(
+    TARGETS ${EXE_NAME}
+    RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}"
+)
+
+endfunction()

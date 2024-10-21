@@ -1,13 +1,16 @@
 {
   backendStdenv,
   cmake,
-  cuBLASLt,
+  cuDSS,
+  cudaOlder,
   cuda_cudart,
   cuda_nvcc,
   cudaMajorMinorVersion,
-  cudaOlder,
   lib,
-  libcublas,
+  libcudss ? null,
+  mpi,
+  nccl,
+  pkg-config,
   runCommand,
 }:
 let
@@ -20,12 +23,11 @@ let
   inherit (lib.fileset) toSource unions;
   inherit (lib.lists) filter optionals;
   inherit (lib.meta) getExe;
-  inherit (lib.strings) hasPrefix;
 
   sampleNames =
     let
       files = readDir ./.;
-      matchingDirNames = filter (filename: hasPrefix "Lt" filename && files.${filename} == "directory") (
+      matchingDirNames = filter (filename: files.${filename} == "directory" && filename != "cmake") (
         attrNames files
       );
     in
@@ -38,14 +40,13 @@ let
       strictDeps = true;
 
       name = "cuda${cudaMajorMinorVersion}-${finalAttrs.pname}-${finalAttrs.version}";
-      pname = "cuda-library-samples-cuBLASLt-${sampleName}";
+      pname = "cuda-library-samples-cuDSS-${sampleName}";
       version = "0-unstable-2024-10-15";
 
       src = toSource {
         root = ./.;
         fileset = unions [
           ./cmake
-          ./Common
           (./. + "/${sampleName}")
         ];
       };
@@ -54,27 +55,33 @@ let
       cmakeBuildDir = "build";
       cmakeDir = "../${sampleName}";
 
-      # /build/cuBLASLt/LtIgemmTensor/main.cpp:38:45: error: narrowing conversion of '0.0f' from 'float' to 'int'
-      #     38 |     TestBench<int8_t, int32_t> props(4, 4, 4);
-      # NOTE: Error happens regardless of CUDA 11/12.
-      env.NIX_CFLAGS_COMPILE = toString (optionals (sampleName == "LtIgemmTensor") [ "-Wno-narrowing" ]);
+      # TODO: get_set doesn't link against cudart, so we need to patch it with autoAddDriverRunpath.
+      # TODO: Rewrite the CMakeLists.txt file to link against cudart and document that this is one use case of autoAddDriverRunpath.
+      nativeBuildInputs =
+        [
+          cmake
+          cuda_nvcc
+        ]
+        ++ optionals (sampleName == "simple_mgmn_mode") [
+          pkg-config
+        ];
 
-      nativeBuildInputs = [
-        cmake
-        cuda_nvcc
-      ];
-
-      buildInputs = [
-        cuda_cudart
-        libcublas
-      ];
+      buildInputs =
+        [
+          cuda_cudart
+          libcudss
+        ]
+        ++ optionals (sampleName == "simple_mgmn_mode") [
+          mpi
+          nccl
+        ];
 
       passthru.tests.test =
-        runCommand "cuBLASLt-${sampleName}"
+        runCommand "cuDSS-${sampleName}"
           {
             __structuredAttrs = true;
             strictDeps = true;
-            nativeBuildInputs = [ cuBLASLt.${sampleName} ];
+            nativeBuildInputs = [ cuDSS.${sampleName} ];
             requiredSystemFeatures = [ "cuda" ];
           }
           (
@@ -86,13 +93,13 @@ let
             ''
             # Run the tests.
             + ''
-              echo "Running cuBLASLt.${sampleName}..."
-              if "${getExe cuBLASLt.${sampleName}}"
+              echo "Running cuDSS.${sampleName}..."
+              if "${getExe cuDSS.${sampleName}}"
               then
-                echo "cuBLASLt.${sampleName} passed"
+                echo "cuDSS.${sampleName} passed"
                 touch "$out"
               else
-                echo "cuBLASLt.${sampleName} failed"
+                echo "cuDSS.${sampleName} failed"
                 exit 1
               fi
             ''
@@ -105,8 +112,13 @@ let
           features in the math and image processing libraries cuBLAS, cuTENSOR,
           cuSPARSE, cuSOLVER, cuFFT, cuRAND, NPP and nvJPEG.
         '';
-        mainProgram = "sample_cublasLt_${sampleName}";
-        broken = sampleName == "LtFp8Matmul" && cudaOlder "12";
+        mainProgram = "${sampleName}_example";
+
+        broken =
+          # libcudss is required and only available from CUDA 12.0
+          cudaOlder "12"
+          # Requires switching to use the MPI compiler, which I don't want to deal with.
+          || sampleName == "simple_mgmn_mode";
         license = lib.licenses.bsd3;
         maintainers = with lib.maintainers; [ obsidian-systems-maintenance ] ++ lib.teams.cuda.members;
       };
