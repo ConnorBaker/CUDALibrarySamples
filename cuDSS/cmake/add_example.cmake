@@ -46,15 +46,46 @@
 # comments to the code, the above Disclaimer and U.S. Government End
 # Users Notice.
 #
-cmake_minimum_required(VERSION 3.19)
 
-set(path "${CMAKE_CURRENT_SOURCE_DIR}")
-cmake_path(GET path FILENAME EXAMPLE_NAME)
+function(add_example)
 
-project("cuDSS_${EXAMPLE_NAME}_example"
-        DESCRIPTION  "cuDSS"
-        HOMEPAGE_URL "https://docs.nvidia.com/cuda/cudss/index.html"
-        LANGUAGES    CXX CUDA)
+if(NOT DEFINED EXAMPLE_NAME OR "${EXAMPLE_NAME}" STREQUAL "")
+    message(FATAL_ERROR "EXAMPLE_NAME is not defined or is empty")
+endif()
 
-include("${CMAKE_CURRENT_SOURCE_DIR}/../cmake/add_example.cmake")
-add_example()
+find_package(CUDAToolkit REQUIRED)
+find_package(cudss 0.4.0 REQUIRED)
+
+set(CMAKE_CXX_STANDARD 11)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+set(CMAKE_CUDA_STANDARD          11)
+set(CMAKE_CUDA_STANDARD_REQUIRED ON)
+set(CMAKE_CUDA_EXTENSIONS        OFF)
+
+set(EXE_NAME "${EXAMPLE_NAME}_example")
+
+set_source_files_properties("${CMAKE_CURRENT_SOURCE_DIR}/${EXAMPLE_NAME}.cpp" PROPERTIES LANGUAGE CUDA)
+
+add_executable(${EXE_NAME} "${CMAKE_CURRENT_SOURCE_DIR}/${EXAMPLE_NAME}.cpp")
+
+set_target_properties(${EXE_NAME} PROPERTIES LINK_WHAT_YOU_USE TRUE)
+
+target_compile_options(${EXE_NAME}
+    PRIVATE
+        "$<$<CONFIG:Debug>:-lineinfo -g>"
+        "$<$<CONFIG:RelWithDebInfo>:-lineinfo -g>"
+)
+
+target_link_libraries(${EXE_NAME}
+    PUBLIC
+        CUDA::cudart
+        cudss
+)
+
+install(
+    TARGETS ${EXE_NAME}
+    RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}"
+)
+
+endfunction()

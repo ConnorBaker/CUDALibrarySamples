@@ -48,19 +48,25 @@
 #
 cmake_minimum_required(VERSION 3.19)
 
-set(EXAMPLE_NAME simple_mgmn_mode)
+set(path "${CMAKE_CURRENT_SOURCE_DIR}")
+cmake_path(GET path FILENAME EXAMPLE_NAME)
 
 project("cuDSS_${EXAMPLE_NAME}_example"
         DESCRIPTION  "cuDSS"
         HOMEPAGE_URL "https://docs.nvidia.com/cuda/cudss/index.html"
         LANGUAGES    CXX CUDA)
 
+find_package(CUDAToolkit REQUIRED)
+find_package(cudss 0.4.0 REQUIRED)
+
+set(CMAKE_CXX_STANDARD 11)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
 set(CMAKE_CUDA_STANDARD          11)
 set(CMAKE_CUDA_STANDARD_REQUIRED ON)
 set(CMAKE_CUDA_EXTENSIONS        OFF)
 
-# Find cuDSS
-find_package(cudss 0.4.0 REQUIRED)
+set_source_files_properties("${CMAKE_CURRENT_SOURCE_DIR}/${EXAMPLE_NAME}.cpp" PROPERTIES LANGUAGE CUDA)
 
 # MGMN-related CMake options
 set(MGMN_NPROC 1 CACHE STRING  "Number of MPI processes the MGMN mode examples")
@@ -70,28 +76,53 @@ set(MPIRUN_EXTRA_FLAGS "--allow-run-as-root" CACHE STRING "Extra flags to be pas
 option(BUILD_MGMN_WITH_OPENMPI "Enable OpenMPI backend for the MGMN mode examples" ON)
 option(BUILD_MGMN_WITH_NCCL    "Enable NCCL backend for the MGMN mode examples" ON)
 
-if(BUILD_MGMN_WITH_OPENMPI AND
-    (NOT DEFINED OPENMPI_INCLUDE_DIRECTORIES OR
-     NOT DEFINED OPENMPI_LINK_DIRECTORIES))
-    message(FATAL_ERROR "For building MGMN examples with OpenMPI, path to \
-OpenMPI headers and libraries must be set in \
-OPENMPI_INCLUDE_DIRECTORIES and OPENMPI_LINK_DIRECTORIES" )
+if (BUILD_MGMN_WITH_OPENMPI OR BUILD_MGMN_WITH_NCCL)
+    set(CUDSS_USE_MPI 1)
+else()
+    set(CUDSS_USE_MPI 0)
 endif()
 
-if(BUILD_MGMN_WITH_NCCL AND
-    (NOT DEFINED NCCL_INCLUDE_DIRECTORIES OR
-     NOT DEFINED NCCL_LINK_DIRECTORIES))
-    message(FATAL_ERROR "For building MGMN examples with NCCL, path to \
-NCCL headers and libraries must be set in \
-NCCL_INCLUDE_DIRECTORIES and NCCL_LINK_DIRECTORIES" )
+# Determine which communication backend options are passed
+# (can be openmpi, nccl or both based on the CMake flags)
+include(FindPkgConfig)
+set(CUDSS_MGMN_COMM_BACKENDS "")
+if (BUILD_MGMN_WITH_OPENMPI)
+    pkg_check_modules(MPI_CXX REQUIRED ompi-cxx)
+    set(CUDSS_MGMN_COMM_BACKENDS ${CUDSS_MGMN_COMM_BACKENDS} "openmpi")
+
+    if (NOT DEFINED MPI_CXX_INCLUDE_DIRS OR NOT DEFINED MPI_CXX_LIBRARY_DIRS)
+        message(FATAL_ERROR "For building MGMN examples with OpenMPI, path to \
+        MPI headers and libraries must be set in \
+        MPI_CXX_INCLUDE_DIRS and MPI_CXX_LIBRARY_DIRS" )
+    else()
+        message(STATUS "MPI_CXX_INCLUDE_DIRS = ${MPI_CXX_INCLUDE_DIRS}")
+        message(STATUS "MPI_CXX_LIBRARY_DIRS = ${MPI_CXX_LIBRARY_DIRS}")
+        message(STATUS "MPI_CXX_LDFLAGS = ${MPI_CXX_LDFLAGS}")
+        message(STATUS "MPI_CXX_LDFLAGS_OTHER = ${MPI_CXX_LDFLAGS_OTHER}")
+        message(STATUS "MPI_CXX_CFLAGS = ${MPI_CXX_CFLAGS}")
+        message(STATUS "MPI_CXX_CFLAGS_OTHER = ${MPI_CXX_CFLAGS_OTHER}")
+    endif()
 endif()
+if (BUILD_MGMN_WITH_NCCL)
+    pkg_check_modules(NCCL REQUIRED nccl)
+    set(CUDSS_MGMN_COMM_BACKENDS ${CUDSS_MGMN_COMM_BACKENDS} "nccl")
+
+    if (NOT DEFINED NCCL_INCLUDE_DIRS OR NOT DEFINED NCCL_LIBRARY_DIRS)
+        message(FATAL_ERROR "For building MGMN examples with NCCL, path to \
+        NCCL headers and libraries must be set in \
+        NCCL_INCLUDE_DIRS and NCCL_LIBRARY_DIRS" )
+    else()
+        message(STATUS "NCCL_INCLUDE_DIRS = ${NCCL_INCLUDE_DIRS}")
+        message(STATUS "NCCL_LIBRARY_DIRS = ${NCCL_LIBRARY_DIRS}")
+    endif()
+endif()
+message(STATUS "CUDSS_MGMN_COMM_BACKENDS = ${CUDSS_MGMN_COMM_BACKENDS}")
 
 # (optional: only if samples are run with ctest)
 enable_testing()
 
 # Helper to make crun launch examples with mpirun (optional: only if samples are run with ctest)
 function(test_mpi_launcher target test Nproc)
-
     if(NOT (DEFINED MPIRUN_EXECUTABLE AND DEFINED MPIRUN_NUMPROC_FLAG))
         message(FATAL_ERROR "MPIRUN_EXECUTABLE and MPIRUN_NUMPROC_FLAG must be defined to use test_mpi_launcher")
     endif()
@@ -110,231 +141,54 @@ function(test_mpi_launcher target test Nproc)
     endif()
 
     set_property(TEST ${test} PROPERTY PROCESSORS ${Nproc})
-
 endfunction()
 
-set_source_files_properties(${EXAMPLE_NAME}.cpp PROPERTIES LANGUAGE CUDA)
+foreach(backend ${CUDSS_MGMN_COMM_BACKENDS})
+    set(EXE_NAME "${EXAMPLE_NAME}_example_${backend}")
 
-# Determine which communication backend options are passed
-# (can be openmpi, nccl or both based on the CMake flags)
-set(CUDSS_MGMN_COMM_BACKENDS "")
-if (BUILD_MGMN_WITH_OPENMPI)
-    set(CUDSS_MGMN_COMM_BACKENDS ${CUDSS_MGMN_COMM_BACKENDS} "openmpi")
-endif()
-if (BUILD_MGMN_WITH_NCCL)
-    set(CUDSS_MGMN_COMM_BACKENDS ${CUDSS_MGMN_COMM_BACKENDS} "nccl")
-endif()
-message(STATUS "CUDSS_MGMN_COMM_BACKENDS = ${CUDSS_MGMN_COMM_BACKENDS}")
+    add_executable(${EXE_NAME} "${CMAKE_CURRENT_SOURCE_DIR}/${EXAMPLE_NAME}.cpp")
 
-if (BUILD_MGMN_WITH_OPENMPI OR BUILD_MGMN_WITH_NCCL)
-    set(CUDSS_USE_MPI 1)
-else()
-    set(CUDSS_USE_MPI 0)
-endif()
+    set_target_properties(${EXE_NAME} PROPERTIES LINK_WHAT_YOU_USE TRUE)
 
-####################################
-
-
-        foreach(backend ${CUDSS_MGMN_COMM_BACKENDS})
-
-            add_executable(${EXAMPLE_NAME}_example_${backend} ${src})
-
-target_sources(${EXAMPLE_NAME}_example_${backend}
-    PUBLIC ${PROJECT_SOURCE_DIR}/${EXAMPLE_NAME}.cpp
-)
-
-if (WIN32)
-    target_include_directories(${EXAMPLE_NAME}_example_${backend} PUBLIC ${cudss_INCLUDE_DIR})
-    target_link_directories(${EXAMPLE_NAME}_example_${backend} PUBLIC ${cudss_LIBRARY_DIR})
-endif()
-
-target_compile_options(${EXAMPLE_NAME}_example_${backend} PRIVATE
-    "$<$<CONFIG:Debug>:-lineinfo -g>"
-    "$<$<CONFIG:RelWithDebInfo>:-lineinfo -g>"
-)
-
-target_link_libraries(${EXAMPLE_NAME}_example_${backend} PUBLIC
-    cudss
-)
-
-            target_include_directories(${EXAMPLE_NAME}_example_${backend} PUBLIC
-                ${cudss_INCLUDE_DIR}
-            )
-
-            target_link_directories(${EXAMPLE_NAME}_example_${backend} PUBLIC
-                ${cudss_LIBRARY_DIR}
-            )
-
-            target_compile_options(${EXAMPLE_NAME}_example_${backend} PRIVATE
-                "$<$<CONFIG:Debug>:-lineinfo -g>"
-                "$<$<CONFIG:RelWithDebInfo>:-lineinfo -g>"
-            )
-
-            target_link_libraries(${EXAMPLE_NAME}_example_${backend} PUBLIC
-                cudss
-            )
-
-            if (CUDSS_USE_MPI)
-                target_compile_options(${EXAMPLE_NAME}_example_${backend} PRIVATE -DUSE_MPI)
-            endif()
-
-            if ("${backend}" STREQUAL "openmpi")
-                target_compile_options(${EXAMPLE_NAME}_example_${backend} PRIVATE -DUSE_OPENMPI)
-            elseif ("${backend}" STREQUAL "nccl")
-                target_compile_options(${EXAMPLE_NAME}_example_${backend} PRIVATE -DUSE_NCCL)
-            endif()
-
-            # Currently, we only support OpenMPI here for MPI but this might change
-            if ("${backend}" STREQUAL "openmpi" OR CUDSS_USE_MPI)
-                target_include_directories(${EXAMPLE_NAME}_example_${backend} PUBLIC
-                                           ${OPENMPI_INCLUDE_DIRECTORIES}
-                )
-            endif()
-            if ("${backend}" STREQUAL "nccl")
-                target_include_directories(${EXAMPLE_NAME}_example_${backend} PUBLIC
-                                           ${NCCL_INCLUDE_DIRECTORIES}
-                )
-            endif()
-
-            # Note: for NCCL we still need the MPI header (for mpi.h) and library (for MPI_Init)
-            if ("${backend}" STREQUAL "openmpi" OR CUDSS_USE_MPI)
-                target_link_directories(${EXAMPLE_NAME}_example_${backend} PUBLIC
-                                        ${OPENMPI_LINK_DIRECTORIES}
-                )
-                target_link_libraries(${EXAMPLE_NAME}_example_${backend} PUBLIC mpi)
-            endif()
-            if ("${backend}" STREQUAL "nccl")
-                target_link_directories(${EXAMPLE_NAME}_example_${backend} PUBLIC
-                                        ${NCCL_LINK_DIRECTORIES}
-                )
-                target_link_libraries(${EXAMPLE_NAME}_example_${backend} PUBLIC nccl)
-            endif()
-
-            # (optional: only if samples are run with ctest)
-            add_test(NAME ${EXAMPLE_NAME}_example_${backend} COMMAND ${EXAMPLE_NAME}_example_${backend} ${backend} ${cudss_LIBRARY_DIR}/libcudss_commlayer_${backend}.so)
-            test_mpi_launcher(${EXAMPLE_NAME}_example_${backend} ${EXAMPLE_NAME}_example_${backend} ${MGMN_NPROC})
-
-            if (BUILD_STATIC)
-                add_executable(${EXAMPLE_NAME}_example_${backend}_static ${src})
-
-target_sources(${EXAMPLE_NAME}_example_${backend}_static
-    PUBLIC ${PROJECT_SOURCE_DIR}/${EXAMPLE_NAME}.cpp
-)
-
-if (WIN32)
-    target_include_directories(${EXAMPLE_NAME}_example_${backend}_static PUBLIC ${cudss_INCLUDE_DIR})
-    target_link_directories(${EXAMPLE_NAME}_example_${backend}_static PUBLIC ${cudss_LIBRARY_DIR})
-endif()
-
-target_compile_options(${EXAMPLE_NAME}_example_${backend}_static PRIVATE
-    "$<$<CONFIG:Debug>:-lineinfo -g>"
-    "$<$<CONFIG:RelWithDebInfo>:-lineinfo -g>"
-)
-
-target_link_libraries(${EXAMPLE_NAME}_example_${backend}_static PUBLIC
-    cudss
-)
-
-                target_link_libraries(${EXAMPLE_NAME}_example_${backend}_static PUBLIC
-                    cudss_static
-                )
-
-                if (CUDSS_USE_MPI)
-                    target_compile_options(${EXAMPLE_NAME}_example_${backend}_static PRIVATE -DUSE_MPI)
-                endif()
-
-                # Note: OpenMPI here has priority over NCCL ( we have to
-                if ("${backend}" STREQUAL "openmpi")
-                    target_compile_options(${EXAMPLE_NAME}_example_${backend}_static PRIVATE -DUSE_OPENMPI)
-                elseif ("${backend}" STREQUAL "nccl")
-                    target_compile_options(${EXAMPLE_NAME}_example_${backend}_static PRIVATE -DUSE_NCCL)
-                endif()
-
-                # Currently, we only support OpenMPI here for MPI but this might change
-                if ("${backend}" STREQUAL "openmpi" OR CUDSS_USE_MPI)
-                    target_include_directories(${EXAMPLE_NAME}_example_${backend}_static PUBLIC
-                                               ${OPENMPI_INCLUDE_DIRECTORIES}
-                    )
-                endif()
-                if ("${backend}" STREQUAL "nccl")
-                    target_include_directories(${EXAMPLE_NAME}_example_${backend}_static PUBLIC
-                                               ${NCCL_INCLUDE_DIRECTORIES}
-                    )
-                endif()
-
-                # Note: for NCCL we still need the MPI header (for mpi.h) and library (for MPI_Init)
-                if ("${backend}" STREQUAL "openmpi" OR CUDSS_USE_MPI)
-                    target_link_directories(${EXAMPLE_NAME}_example_${backend}_static PUBLIC
-                                            ${OPENMPI_LINK_DIRECTORIES}
-                    )
-                    target_link_libraries(${EXAMPLE_NAME}_example_${backend}_static PUBLIC mpi)
-                endif()
-                if ("${backend}" STREQUAL "nccl")
-                    target_link_directories(${EXAMPLE_NAME}_example_${backend}_static PUBLIC
-                                            ${NCCL_LINK_DIRECTORIES}
-                    )
-                    target_link_libraries(${EXAMPLE_NAME}_example_${backend}_static PUBLIC nccl)
-                endif()
-
-                # (optional: only if samples are run with ctest)
-                add_test(NAME ${EXAMPLE_NAME}_example_${backend}_static COMMAND ${EXAMPLE_NAME}_example_${backend}_static
-                    ${backend} ${cudss_LIBRARY_DIR}/libcudss_commlayer_${backend}.so)
-                test_mpi_launcher(${EXAMPLE_NAME}_example_${backend}_static ${EXAMPLE_NAME}_example_${backend}_static ${MGMN_NPROC})
-
-            endif()
-
-        endforeach()
-
-
-
-
-
-
-
-####################################
-
-option(USE_MY_LIB "Use MY_LIB instead of THEIR_LIB" OFF) #OFF by default
-if(USE_MY_LIB)
-
-add_executable(${EXAMPLE_NAME}_example)
-
-target_sources(${EXAMPLE_NAME}_example
-    PUBLIC ${PROJECT_SOURCE_DIR}/${EXAMPLE_NAME}.cpp
-)
-
-if (WIN32)
-    target_include_directories(${EXAMPLE_NAME}_example PUBLIC ${cudss_INCLUDE_DIR})
-    target_link_directories(${EXAMPLE_NAME}_example PUBLIC ${cudss_LIBRARY_DIR})
-endif()
-
-target_compile_options(${EXAMPLE_NAME}_example PRIVATE
-    "$<$<CONFIG:Debug>:-lineinfo -g>"
-    "$<$<CONFIG:RelWithDebInfo>:-lineinfo -g>"
-)
-
-target_link_libraries(${EXAMPLE_NAME}_example PUBLIC
-    cudss
-)
-
-if(BUILD_STATIC)
-    add_executable(${EXAMPLE_NAME}_example_static)
-
-    target_sources(${EXAMPLE_NAME}_example_static
-        PUBLIC ${PROJECT_SOURCE_DIR}/${EXAMPLE_NAME}.cpp
+    target_compile_options(${EXE_NAME}
+        PRIVATE
+            "$<$<CONFIG:Debug>:-lineinfo -g>"
+            "$<$<CONFIG:RelWithDebInfo>:-lineinfo -g>"
     )
 
-    if (WIN32)
-        target_include_directories(${EXAMPLE_NAME}_example_static PUBLIC ${cudss_INCLUDE_DIR})
-        target_link_directories(${EXAMPLE_NAME}_example_static PUBLIC ${cudss_LIBRARY_DIR})
-        target_link_libraries(${EXAMPLE_NAME}_example_static PUBLIC
-        cudss
+    target_link_libraries(${EXE_NAME}
+        PUBLIC
+            CUDA::cudart
+            cudss
     )
-    else()
-        target_link_libraries(${EXAMPLE_NAME}_example_static PUBLIC
-            cudss_static
-        )
+
+    target_include_directories(${EXE_NAME} PUBLIC ${cudss_INCLUDE_DIR})
+
+    if (CUDSS_USE_MPI)
+        target_compile_options(${EXE_NAME} PRIVATE -DUSE_MPI)
     endif()
 
-endif()
+    if ("${backend}" STREQUAL "openmpi")
+        target_compile_options(${EXE_NAME} PRIVATE -DUSE_OPENMPI ${MPI_CXX_CFLAGS})
+        target_link_options(${EXE_NAME} PRIVATE ${MPI_CXX_LDFLAGS})
+        target_include_directories(${EXE_NAME} PUBLIC ${MPI_CXX_INCLUDE_DIRS})
+        target_link_directories(${EXE_NAME} PUBLIC ${MPI_CXX_LIBRARY_DIRS} ${MPI_CXX_LIBRARY_DIRS}/openmpi)
+        target_link_libraries(${EXE_NAME} PUBLIC mpi)
+    elseif ("${backend}" STREQUAL "nccl")
+        # Note: for NCCL we still need the MPI header (for mpi.h) and library (for MPI_Init)
+        target_compile_options(${EXE_NAME} PRIVATE -DUSE_NCCL ${NCCL_CFLAGS})
+        target_link_options(${EXE_NAME} PRIVATE ${NCCL_LDFLAGS})
+        target_include_directories(${EXE_NAME} PUBLIC ${NCCL_INCLUDE_DIRS})
+        target_link_directories(${EXE_NAME} PUBLIC ${NCCL_LIBRARY_DIRS})
+        target_link_libraries(${EXE_NAME} PUBLIC nccl)
+    endif()
 
-endif()
+    # (optional: only if samples are run with ctest)
+    add_test(NAME ${EXE_NAME} COMMAND ${EXE_NAME} ${backend} ${cudss_LIBRARY_DIR}/libcudss_commlayer_${backend}.so)
+    test_mpi_launcher(${EXE_NAME} ${EXE_NAME} ${MGMN_NPROC})
+
+    install(
+        TARGETS ${EXE_NAME}
+        RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}"
+    )
+endforeach()
