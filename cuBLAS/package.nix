@@ -1,6 +1,4 @@
 {
-  autoAddDriverRunpath,
-  autoPatchelfHook,
   backendStdenv,
   cmake,
   cuBLAS,
@@ -55,8 +53,6 @@ let
       cmakeDir = "../${groupName}/${sampleName}";
 
       nativeBuildInputs = [
-        autoAddDriverRunpath
-        autoPatchelfHook
         cmake
         cuda_nvcc
       ];

@@ -16,11 +16,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1729319984,
-        "narHash": "sha256-KdkNuVOWPUwBesyjXrRdngjT++1Sn0lTraFydMI/pug=",
+        "lastModified": 1729535099,
+        "narHash": "sha256-7ZR0/wLh8PnEG9QTRTrj4jhC4utjcY7TCjfQjnoEMFc=",
         "owner": "ConnorBaker",
         "repo": "cuda-packages",
-        "rev": "639088a474bd388a2206c03decadcd3a82bce52d",
+        "rev": "79369a33e4269eb5545a3ad85ea391684d552ab6",
         "type": "github"
       },
       "original": {
@@ -113,11 +113,11 @@
     },
     "nixpkgs": {
       "locked": {
-        "lastModified": 1729320241,
-        "narHash": "sha256-tryBeO/cHpW99CBLbPaM7t6n3wTeqEB6Pb6H3UmowKM=",
+        "lastModified": 1729532701,
+        "narHash": "sha256-YOP9ZenKh3WURJXMuRZbTFEIKVegtiFXQFRFWUO5PkM=",
         "owner": "nixos",
         "repo": "nixpkgs",
-        "rev": "46127d1789f6b54a1487b24dc7acd856d46652c7",
+        "rev": "e056730f13ab6ed6d8325d4343752f7f9b9bf60b",
         "type": "github"
       },
       "original": {

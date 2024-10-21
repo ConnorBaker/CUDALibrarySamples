@@ -1,6 +1,4 @@
 {
-  autoAddDriverRunpath,
-  autoPatchelfHook,
   backendStdenv,
   cmake,
   cuBLASMp,
@@ -12,6 +10,7 @@
   libcublas,
   libcublasmp,
   mpi,
+  nccl,
   pkg-config,
   runCommand,
 }:
@@ -20,14 +19,12 @@ let
   inherit (lib.attrsets)
     attrNames
     genAttrs
-    getDev
     getOutput
     ;
   inherit (lib.lists) concatMap optionals;
   inherit (lib.meta) getExe';
-  inherit (lib.strings) cmakeOptionType hasSuffix removeSuffix;
+  inherit (lib.strings) hasSuffix removeSuffix;
 
-  cmakePath = cmakeOptionType "PATH";
   sampleNames =
     let
       files = readDir ./.;
@@ -51,17 +48,9 @@ backendStdenv.mkDerivation (finalAttrs: {
   src = ./.;
 
   nativeBuildInputs = [
-    autoAddDriverRunpath
-    autoPatchelfHook
     cmake
     cuda_nvcc
     pkg-config
-  ];
-
-  # TODO: The exec path doesn't need to exist, it just uses it to find headers.
-  # At least this forces mpi to come from pkgs rather than buildPackages.
-  cmakeFlags = [
-    (cmakePath "MPIEXEC_EXECUTABLE" "${getExe' (getDev mpi) "does-not-exist"}")
   ];
 
   buildInputs = [
@@ -72,22 +61,26 @@ backendStdenv.mkDerivation (finalAttrs: {
     mpi
   ];
 
+  propagatedBuildInputs = [
+    libcal.out # With setup hook, equivalent to env.UCC_CONFIG_FILE = "${libcal.out}/share/ucc.conf";
+  ];
+
   passthru.tests = genAttrs sampleNames (
     sampleName:
     runCommand "cuBLASMp-${sampleName}"
       {
+        # Requires access to network and sys.
         __structuredAttrs = true;
         strictDeps = true;
         nativeBuildInputs = [
           cuBLASMp
           mpi
-          libcal.out # With setup hook, equivalent to env.UCC_CONFIG_FILE = "${libcal.out}/share/ucc.conf";
+          nccl
         ];
         requiredSystemFeatures = [ "cuda" ];
       }
       (
         # Make a temporary directory for the tests and error out if anything fails.
-        # TODO: Requires access to network and sys.
         ''
           set -euo pipefail
           export HOME="$(mktemp --directory)"
@@ -96,7 +89,7 @@ backendStdenv.mkDerivation (finalAttrs: {
         # Run the tests.
         + ''
           echo "Running cuBLASMp.${sampleName}..."
-          if "${getExe' mpi "mpirun"}" -n 2 "${getExe' cuBLASMp sampleName}"
+          if "${getExe' mpi "mpirun"}" -n 2 "${getExe' cuBLASMp sampleName}" -m 100 -n 100 -k 100 -verbose 1
           then
             echo "cuBLASMp.${sampleName} passed"
             touch "$out"

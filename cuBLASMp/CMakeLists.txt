@@ -51,7 +51,8 @@ cmake_minimum_required(VERSION 3.16)
 
 project(cublasmp_samples LANGUAGES CXX CUDA)
 
-find_package(MPI REQUIRED)
+include(FindPkgConfig)
+pkg_check_modules(MPI_CXX REQUIRED ompi-cxx)
 find_package(CUDAToolkit REQUIRED)
 
 set(CMAKE_CUDA_STANDARD 11)
@@ -77,10 +78,10 @@ function(build_sample sample_name)
 
     target_link_libraries(${sample_name} PUBLIC
         ${CAL_MPI_LIBRARIES}
-        ${MPI_CXX_LIBRARIES}
         cal
         cublasmp
         CUDA::cudart
+        mpi
     )
 
     install(
