@@ -3,7 +3,6 @@
   cmake,
   cuda_cudart,
   cuda_nvcc,
-  cudaMajorMinorVersion,
   cudaOlder,
   cuFFT,
   lib,
@@ -37,11 +36,7 @@ let
 
   buildSample =
     sampleName:
-    backendStdenv.mkDerivation (finalAttrs: {
-      __structuredAttrs = true;
-      strictDeps = true;
-
-      name = "cuda${cudaMajorMinorVersion}-${finalAttrs.pname}-${finalAttrs.version}";
+    backendStdenv.mkDerivation {
       pname = "cuda-library-samples-cuFFT-${sampleName}";
       version = "0-unstable-2024-10-15";
 
@@ -125,6 +120,6 @@ let
         license = lib.licenses.bsd3;
         maintainers = with lib.maintainers; [ obsidian-systems-maintenance ] ++ lib.teams.cuda.members;
       };
-    });
+    };
 in
 recurseIntoAttrs (genAttrs sampleNames buildSample)

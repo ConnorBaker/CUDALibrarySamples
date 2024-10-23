@@ -4,7 +4,6 @@
   cuBLAS,
   cuda_cudart,
   cuda_nvcc,
-  cudaMajorMinorVersion,
   cudaOlder,
   lib,
   libcublas,
@@ -31,11 +30,7 @@ let
 
   buildSample =
     groupName: sampleName:
-    backendStdenv.mkDerivation (finalAttrs: {
-      __structuredAttrs = true;
-      strictDeps = true;
-
-      name = "cuda${cudaMajorMinorVersion}-${finalAttrs.pname}-${finalAttrs.version}";
+    backendStdenv.mkDerivation {
       pname = "cuda-library-samples-cuBLAS-${groupName}-${sampleName}";
       version = "0-unstable-2024-10-15";
 
@@ -105,7 +100,7 @@ let
         license = lib.licenses.bsd3;
         maintainers = with lib.maintainers; [ obsidian-systems-maintenance ] ++ lib.teams.cuda.members;
       };
-    });
+    };
 
   mkGroup =
     groupName:
