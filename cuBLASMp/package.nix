@@ -4,7 +4,6 @@
   cuBLASMp,
   cuda_cudart,
   cuda_nvcc,
-  cudaMajorMinorVersion,
   lib,
   libcal ? null,
   libcublas,
@@ -37,11 +36,7 @@ let
     in
     matchingDirNames;
 in
-backendStdenv.mkDerivation (finalAttrs: {
-  __structuredAttrs = true;
-  strictDeps = true;
-
-  name = "cuda${cudaMajorMinorVersion}-${finalAttrs.pname}-${finalAttrs.version}";
+backendStdenv.mkDerivation {
   pname = "cuda-library-samples-cuBLASMp";
   version = "0-unstable-2024-10-15";
 
@@ -112,4 +107,4 @@ backendStdenv.mkDerivation (finalAttrs: {
     license = lib.licenses.bsd3;
     maintainers = with lib.maintainers; [ obsidian-systems-maintenance ] ++ lib.teams.cuda.members;
   };
-})
+}
