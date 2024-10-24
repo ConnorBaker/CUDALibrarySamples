@@ -30,49 +30,45 @@
   outputs =
     inputs:
     let
-      inherit (inputs.nixpkgs.lib) optionalAttrs;
+      inherit (builtins) readDir;
       inherit (inputs.nixpkgs.lib.attrsets)
         attrNames
-        cartesianProduct
-        filterAttrs
         getAttr
-        mergeAttrsList
+        mapAttrs
+        optionalAttrs
         recurseIntoAttrs
         ;
       inherit (inputs.nixpkgs.lib.customisation) makeScope;
-      inherit (inputs.nixpkgs.lib.lists) concatMap map optionals;
+      inherit (inputs.nixpkgs.lib.lists) concatMap optionals;
       inherit (inputs.nixpkgs.lib.filesystem) packagesFromDirectoryRecursive;
       inherit (inputs.nixpkgs.lib.fileset) unions toSource;
-      inherit (inputs.nixpkgs.lib.strings) hasSuffix;
       inherit (inputs.flake-parts.lib) mkFlake;
       inherit (inputs.cuda-packages) mkOverlay;
       inherit (inputs.cuda-packages.cuda-lib.utils) flattenDrvTree;
 
       overlay =
-        _: prev:
         let
+          files = readDir ./.;
+          dirs = concatMap (
+            filename: optionals (getAttr filename files == "directory") [ (./. + "/${filename}") ]
+          ) (attrNames files);
+          src = toSource {
+            root = ./.;
+            fileset = unions dirs;
+          };
           overrideScopeFn = cudaFinal: _: {
-            cuda-library-samples = makeScope cudaFinal.newScope (
-              cudaLibrarySamplesFinal:
-              packagesFromDirectoryRecursive {
-                inherit (cudaLibrarySamplesFinal) callPackage;
-                directory =
-                  let
-                    files = builtins.readDir ./.;
-                    dirs = concatMap (
-                      filename: optionals (getAttr filename files == "directory") [ (./. + "/${filename}") ]
-                    ) (attrNames files);
-                    src = toSource {
-                      root = ./.;
-                      fileset = unions dirs;
-                    };
-                  in
-                  src;
-              }
+            cuda-library-samples = recurseIntoAttrs (
+              makeScope cudaFinal.newScope (
+                cudaLibrarySamplesFinal:
+                packagesFromDirectoryRecursive {
+                  inherit (cudaLibrarySamplesFinal) callPackage;
+                  directory = src;
+                }
+              )
             );
           };
         in
-        {
+        _: prev: {
           cudaPackages_11 = prev.cudaPackages_11.overrideScope overrideScopeFn;
           cudaPackages_12 = prev.cudaPackages_12.overrideScope overrideScopeFn;
         };
@@ -84,8 +80,8 @@
       ];
 
       imports = [
-        inputs.treefmt-nix.flakeModule
         inputs.git-hooks-nix.flakeModule
+        inputs.treefmt-nix.flakeModule
       ];
 
       flake.overlays.default = overlay;
@@ -93,88 +89,44 @@
       perSystem =
         { config, system, ... }:
         let
-          # TODO: Are config attributes not re-evaluated when the overlay changes? Or is it just the Nix flake's CLI
-          # which warns when an overlay enables allowUnfree and the first pkgs instantiation doesn't?
-          # Unfree needs to be set in the initial config attribute set, even though we override it in our overlay.
-          configurations = cartesianProduct {
-            device = [
-              {
-                name = "ada";
-                capabilities = [ "8.9" ];
-              }
-              {
-                name = "orin";
-                capabilities = [ "8.7" ];
-              }
-              {
-                name = "xavier";
-                capabilities = [ "7.2" ];
-              }
-            ];
-            cudaMajorVersion = [
-              "11"
-              "12"
-            ];
-            test = [
-              true
-              false
-            ];
-          };
-
-          mkExposedTree =
+          configs =
             {
-              device,
-              cudaMajorVersion,
-              test,
-            }:
-            let
-              pkgs = import inputs.nixpkgs {
-                inherit system;
-                config = {
-                  allowUnfree = true;
-                  cudaSupport = true;
-                  cudaCapabilities = device.capabilities;
-                };
-                overlays = [
-                  (mkOverlay { inherit (device) capabilities; })
-                  overlay
-                ];
-              };
-
-              inherit (pkgs) linkFarm;
-
-              attrName = "${device.name}Cuda${cudaMajorVersion}LibrarySamples${if test then "Tests" else ""}Drvs";
-            in
-            optionalAttrs (device.name != "ada" -> system == "aarch64-linux") {
-              "${device.name}Pkgs" = pkgs;
-              "${attrName}" = linkFarm attrName (flattenDrvTree {
-                attrs = pkgs."cudaPackages_${cudaMajorVersion}".cuda-library-samples;
-                doTrace = false;
-                includeFunc =
-                  if test then
-                    name: drv:
-                    drv.passthru.test or (
-                      if drv ? passthru.tests then
-                        linkFarm "${name}-tests" (flattenDrvTree {
-                          attrs = recurseIntoAttrs drv.passthru.tests;
-                        })
-                      else
-                        drv
-                    )
-                  else
-                    _: drv: drv;
-              });
+              ada = "8.9";
+            }
+            // optionalAttrs (system == "aarch64-linux") {
+              orin = "8.7";
+              xavier = "7.2";
             };
 
-          all = mergeAttrsList (map mkExposedTree configurations);
+          ourPkgs = mapAttrs (
+            _: capability:
+            import inputs.nixpkgs {
+              inherit system;
+              config = {
+                allowUnfree = true;
+                cudaSupport = true;
+                cudaCapabilities = [ capability ];
+              };
+              overlays = [
+                (mkOverlay { capabilities = [ capability ]; })
+                overlay
+              ];
+            }
+          ) configs;
+
+          ourCudaLibrarySamples = mapAttrs (name: _: {
+            cuda11 = ourPkgs.${name}.cudaPackages_11.cuda-library-samples;
+            cuda12 = ourPkgs.${name}.cudaPackages_12.cuda-library-samples;
+          }) configs;
         in
         {
-          # Make upstream's cudaPackages the default.
-          _module.args.pkgs = all.adaPkgs;
+          _module.args.pkgs = ourPkgs.ada;
 
-          legacyPackages = all;
+          checks = flattenDrvTree {
+            attrs = recurseIntoAttrs (mapAttrs (_: recurseIntoAttrs) ourCudaLibrarySamples);
+          };
 
-          packages = filterAttrs (name: _: !(hasSuffix "Pkgs" name)) config.legacyPackages;
+          legacyPackages = ourPkgs;
 
           pre-commit.settings.hooks = {
             # Formatter checks
