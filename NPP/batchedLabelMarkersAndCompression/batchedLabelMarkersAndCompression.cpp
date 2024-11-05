@@ -238,8 +238,8 @@ int main(int argc, const char *argv[])
     params.numofbatch = std::atoi(argv[pidx + 1]);
     }
 
-    int      aGenerateLabelsScratchBufferSize[NUMBER_OF_IMAGES];
-    int      aCompressLabelsScratchBufferSize[NUMBER_OF_IMAGES];
+    int      aGenerateLabelsScratchBufferSize[NUMBER_OF_IMAGES] = {0};
+    int      aCompressLabelsScratchBufferSize[NUMBER_OF_IMAGES] = {0};
 
     int nCompressedLabelCount = 0;
     cudaError_t cudaError;
@@ -262,7 +262,7 @@ int main(int argc, const char *argv[])
     cudaError = cudaGetDevice(&nppStreamCtx.nCudaDeviceId);
     if (cudaError != cudaSuccess)
     {
-        printf("CUDA error: no devices supporting CUDA.\n");
+        fprintf(stderr, "CUDA error: no devices supporting CUDA.\n");
         return NPP_NOT_SUFFICIENT_COMPUTE_CAPABILITY;
     }
 
@@ -281,13 +281,19 @@ int main(int argc, const char *argv[])
                                        cudaDevAttrComputeCapabilityMajor, 
                                        nppStreamCtx.nCudaDeviceId);
     if (cudaError != cudaSuccess)
+    {
+        fprintf(stderr, "CUDA error: unable to get cudaDevAttrComputeCapabilityMajor.\n");
         return NPP_NOT_SUFFICIENT_COMPUTE_CAPABILITY;
+    }
 
     cudaError = cudaDeviceGetAttribute(&nppStreamCtx.nCudaDevAttrComputeCapabilityMinor, 
                                        cudaDevAttrComputeCapabilityMinor, 
                                        nppStreamCtx.nCudaDeviceId);
     if (cudaError != cudaSuccess)
+    {
+        fprintf(stderr, "CUDA error: unable to get cudaDevAttrComputeCapabilityMinor.\n");
         return NPP_NOT_SUFFICIENT_COMPUTE_CAPABILITY;
+    }
 
     cudaError = cudaStreamGetFlags(nppStreamCtx.hStream, &nppStreamCtx.nStreamFlags);
 
@@ -335,7 +341,11 @@ int main(int argc, const char *argv[])
 
         cudaError = cudaMalloc ((void**)&pInputImageDev[nImage], oSizeROI[nImage].width * sizeof(Npp8u) * oSizeROI[nImage].height);
         if (cudaError != cudaSuccess)
+        {
+            fprintf(stderr, "cudaMalloc pInputImageDev[%d] failed.\n", nImage);
+            tearDown();
             return NPP_MEMORY_ALLOCATION_ERR;
+        }
 
         // For images processed with UF label markers functions ROI width and height for label markers generation output AND marker compression functions MUST be the same AND 
         // line pitch MUST be equal to ROI.width * sizeof(Npp32u).  Also the image pointer used for label markers generation output must start at the same position in the image
@@ -344,7 +354,11 @@ int main(int argc, const char *argv[])
 
         cudaError = cudaMalloc ((void**)&pUFLabelDev[nImage], oSizeROI[nImage].width * sizeof(Npp32u) * oSizeROI[nImage].height);
         if (cudaError != cudaSuccess)
+        {
+            fprintf(stderr, "cudaMalloc pUFLabelDev[%d] failed.\n", nImage);
+            tearDown();
             return NPP_MEMORY_ALLOCATION_ERR;
+        }
 
         pInputImageHost[nImage] = reinterpret_cast<Npp8u *>(malloc(oSizeROI[nImage].width * sizeof(Npp8u) * oSizeROI[nImage].height));
         pUFLabelHost[nImage] = reinterpret_cast<Npp32u *>(malloc(oSizeROI[nImage].width * sizeof(Npp32u) * oSizeROI[nImage].height));
@@ -352,18 +366,40 @@ int main(int argc, const char *argv[])
         // Use UF functions throughout this sample.
 
         nppStatus = nppiLabelMarkersUFGetBufferSize_32u_C1R(oSizeROI[nImage], &aGenerateLabelsScratchBufferSize[nImage]);
+        if (nppStatus != NPP_NO_ERROR)
+        {
+            fprintf(stderr, "LabelMarkersUFGetBufferSize_32u_C1R for image %d failed.\n", nImage);
+            tearDown();
+            return nppStatus;
+        }
+        else if (aGenerateLabelsScratchBufferSize[nImage] < 0)
+        {
+            fprintf(stderr, "aGenerateLabelsScratchBufferSize[%d] is negative: %d.\n", nImage, aGenerateLabelsScratchBufferSize[nImage]);
+            tearDown();
+            return NPP_ERROR;
+        }
 
         // One at a time image processing
 
         cudaError = cudaMalloc ((void **)&pUFGenerateLabelsScratchBufferDev[nImage], aGenerateLabelsScratchBufferSize[nImage]);
         if (cudaError != cudaSuccess)
+        {
+            fprintf(stderr, "cudaMalloc pUFGenerateLabelsScratchBufferDev[%d] failed.\n", nImage);
+            tearDown();
             return NPP_MEMORY_ALLOCATION_ERR;
+        }
 
         if (loadRaw8BitImage(pInputImageHost[nImage], oSizeROI[nImage].width * sizeof(Npp8u), oSizeROI[nImage].height, nImage) == 0)
         {
             cudaError = cudaMemcpy2DAsync(pInputImageDev[nImage], oSizeROI[nImage].width * sizeof(Npp8u), pInputImageHost[nImage], 
                                                           oSizeROI[nImage].width * sizeof(Npp8u), oSizeROI[nImage].width * sizeof(Npp8u), oSizeROI[nImage].height, 
                                                           cudaMemcpyHostToDevice, nppStreamCtx.hStream);
+            if (cudaError != cudaSuccess)
+            {
+                fprintf(stderr, "cudaMemcpy2DAsync pInputImageDev[%d] failed.\n", nImage);
+                tearDown();
+                return NPP_MEMCPY_ERROR;
+            }
 
             nppStatus = nppiLabelMarkersUF_8u32u_C1R_Ctx(pInputImageDev[nImage],
                                                          oSizeROI[nImage].width * sizeof(Npp8u),
@@ -377,15 +413,15 @@ int main(int argc, const char *argv[])
             if (nppStatus != NPP_SUCCESS)  
             {
                 if (nImage == 0)
-                    printf("Lena_LabelMarkersUF_8Way_512x512_32u failed.\n");
+                    fprintf(stderr, "Lena_LabelMarkersUF_8Way_512x512_32u failed.\n");
                 else if (nImage == 1)
-                    printf("CT_skull_LabelMarkersUF_8Way_512x512_32u failed.\n");
+                    fprintf(stderr, "CT_skull_LabelMarkersUF_8Way_512x512_32u failed.\n");
                 else if (nImage == 2)
-                    printf("PCB_METAL_LabelMarkersUF_8Way_509x335_32u failed.\n");
+                    fprintf(stderr, "PCB_METAL_LabelMarkersUF_8Way_509x335_32u failed.\n");
                 else if (nImage == 3)
-                    printf("PCB2_LabelMarkersUF_8Way_1024x683_32u failed.\n");
+                    fprintf(stderr, "PCB2_LabelMarkersUF_8Way_1024x683_32u failed.\n");
                 else if (nImage == 4)
-                    printf("PCB_LabelMarkersUF_8Way_1280x720_32u failed.\n");
+                    fprintf(stderr, "PCB_LabelMarkersUF_8Way_1280x720_32u failed.\n");
                 tearDown();
                 return -1;
             }
@@ -393,9 +429,15 @@ int main(int argc, const char *argv[])
             cudaError = cudaMemcpy2DAsync(pUFLabelHost[nImage], oSizeROI[nImage].width * sizeof(Npp32u), 
                                           pUFLabelDev[nImage], oSizeROI[nImage].width * sizeof(Npp32u), oSizeROI[nImage].width * sizeof(Npp32u), oSizeROI[nImage].height,
                                           cudaMemcpyDeviceToHost, nppStreamCtx.hStream);
+            if (cudaError != cudaSuccess)
+            {
+                fprintf(stderr, "cudaMemcpy2DAsync pUFLabelHost[%d] failed.\n", nImage);
+                tearDown();
+                return NPP_MEMCPY_ERROR;
+            }
 
             // Wait host image read backs to complete, not necessary if no need to synchronize
-            if ((cudaError = cudaStreamSynchronize(nppStreamCtx.hStream)) != cudaSuccess) 
+            if ((cudaError = cudaStreamSynchronize(nppStreamCtx.hStream)) != cudaSuccess)
             {
                 printf ("Post label generation cudaStreamSynchronize failed\n");
                 tearDown();
@@ -424,11 +466,25 @@ int main(int argc, const char *argv[])
 
             nppStatus = nppiCompressMarkerLabelsGetBufferSize_32u_C1R(oSizeROI[nImage].width * oSizeROI[nImage].height, &aCompressLabelsScratchBufferSize[nImage]);
             if (nppStatus != NPP_NO_ERROR)
+            {
+                fprintf(stderr, "CompressMarkerLabelsGetBufferSize_32u_C1R for image %d failed.\n", nImage);
+                tearDown();
                 return nppStatus;
+            }
+            else if (aCompressLabelsScratchBufferSize[nImage] < 0)
+            {
+                fprintf(stderr, "aCompressLabelsScratchBufferSize[%d] is negative: %d.\n", nImage, aCompressLabelsScratchBufferSize[nImage]);
+                tearDown();
+                return NPP_ERROR;
+            }
 
             cudaError = cudaMalloc ((void **)&pUFCompressedLabelsScratchBufferDev[nImage], aCompressLabelsScratchBufferSize[nImage]);
             if (cudaError != cudaSuccess)
+            {
+                fprintf(stderr, "cudaMalloc pUFCompressedLabelsScratchBufferDev[%d] failed.\n", nImage);
+                tearDown();
                 return NPP_MEMORY_ALLOCATION_ERR;
+            }
 
             nCompressedLabelCount = 0;
 
@@ -439,15 +495,15 @@ int main(int argc, const char *argv[])
             if (nppStatus != NPP_SUCCESS)  
             {
                 if (nImage == 0)
-                    printf("Lena_CompressedLabelMarkersUF_8Way_512x512_32u failed.\n");
+                    fprintf(stderr, "Lena_CompressedLabelMarkersUF_8Way_512x512_32u failed.\n");
                 else if (nImage == 1)
-                    printf("CT_Skull_CompressedLabelMarkersUF_8Way_512x512_32u failed.\n");
+                    fprintf(stderr, "CT_Skull_CompressedLabelMarkersUF_8Way_512x512_32u failed.\n");
                 else if (nImage == 2)
-                    printf("PCB_METAL_CompressedLabelMarkersUF_8Way_509x335_32u failed.\n");
+                    fprintf(stderr, "PCB_METAL_CompressedLabelMarkersUF_8Way_509x335_32u failed.\n");
                 else if (nImage == 3)
-                    printf("PCB2_CompressedLabelMarkersUF_8Way_1024x683_32u failed.\n");
+                    fprintf(stderr, "PCB2_CompressedLabelMarkersUF_8Way_1024x683_32u failed.\n");
                 else if (nImage == 4)
-                    printf("PCB_CompressedLabelMarkersUF_8Way_1280x720_32u failed.\n");
+                    fprintf(stderr, "PCB_CompressedLabelMarkersUF_8Way_1280x720_32u failed.\n");
                 tearDown();
                 return -1;
             }
@@ -455,6 +511,12 @@ int main(int argc, const char *argv[])
             cudaError = cudaMemcpy2DAsync(pUFLabelHost[nImage], oSizeROI[nImage].width * sizeof(Npp32u), 
                                           pUFLabelDev[nImage], oSizeROI[nImage].width * sizeof(Npp32u), oSizeROI[nImage].width * sizeof(Npp32u), oSizeROI[nImage].height,
                                           cudaMemcpyDeviceToHost, nppStreamCtx.hStream);
+            if (cudaError != cudaSuccess)
+            {
+                fprintf(stderr, "cudaMemcpy2DAsync pUFLabelHost[%d] failed.\n", nImage);
+                tearDown();
+                return NPP_MEMCPY_ERROR;
+            }
 
             // Wait for host image read backs to finish, not necessary if no need to synchronize
             if ((cudaError = cudaStreamSynchronize(nppStreamCtx.hStream)) != cudaSuccess || nCompressedLabelCount == 0) 
@@ -485,15 +547,15 @@ int main(int argc, const char *argv[])
             fclose(bmpFile);
 
             if (nImage == 0)
-                printf("Lena_CompressedMarkerLabelsUF_8Way_512x512_32u succeeded, compressed label count is %d.\n", nCompressedLabelCount);
+                fprintf(stderr, "Lena_CompressedMarkerLabelsUF_8Way_512x512_32u succeeded, compressed label count is %d.\n", nCompressedLabelCount);
             else if (nImage == 1)
-                printf("CT_Skull_CompressedMarkerLabelsUF_8Way_512x512_32u succeeded, compressed label count is %d.\n", nCompressedLabelCount);
+                fprintf(stderr, "CT_Skull_CompressedMarkerLabelsUF_8Way_512x512_32u succeeded, compressed label count is %d.\n", nCompressedLabelCount);
             else if (nImage == 2)
-                printf("PCB_METAL_CompressedMarkerLabelsUF_8Way_509x335_32u succeeded, compressed label count is %d.\n", nCompressedLabelCount);
+                fprintf(stderr, "PCB_METAL_CompressedMarkerLabelsUF_8Way_509x335_32u succeeded, compressed label count is %d.\n", nCompressedLabelCount);
             else if (nImage == 3)
-                printf("PCB2_CompressedMarkerLabelsUF_8Way_1024x683_32u succeeded, compressed label count is %d.\n", nCompressedLabelCount);
+                fprintf(stderr, "PCB2_CompressedMarkerLabelsUF_8Way_1024x683_32u succeeded, compressed label count is %d.\n", nCompressedLabelCount);
             else if (nImage == 4)
-                printf("PCB_CompressedMarkerLabelsUF_8Way_1280x720_32u succeeded, compressed label count is %d.\n", nCompressedLabelCount);
+                fprintf(stderr, "PCB_CompressedMarkerLabelsUF_8Way_1280x720_32u succeeded, compressed label count is %d.\n", nCompressedLabelCount);
         }
     }
 
@@ -502,16 +564,36 @@ int main(int argc, const char *argv[])
     // We want to allocate scratch buffers more efficiently for batch processing so first we free up the scratch buffers for image 0 and reallocate them.
     // This is not required but helps cudaMalloc to work more efficiently.
 
-    cudaFree(pUFCompressedLabelsScratchBufferDev[0]);
+    cudaFree(pUFGenerateLabelsScratchBufferDev[0]);
+
+    // TODO(@connorbaker): Does this fix the failure caused when trying to cudaMalloc the scratch buffer for the first image?
+    if ((cudaError = cudaStreamSynchronize(nppStreamCtx.hStream)) != cudaSuccess)
+    {
+        printf ("Pre-label generation cudaStreamSynchronize failed\n");
+        tearDown();
+        return -1;
+    }
 
     int nTotalBatchedUFCompressLabelsScratchBufferDevSize = 0;
 
     for (int k = 0; k < NUMBER_OF_IMAGES; k++)
+    {
+        if (aCompressLabelsScratchBufferSize[k] < 0)
+        {
+            fprintf(stderr, "aCompressLabelsScratchBufferSize[%d] is negative: %d.\n", k, aCompressLabelsScratchBufferSize[k]);
+            tearDown();
+            return NPP_ERROR;
+        }
         nTotalBatchedUFCompressLabelsScratchBufferDevSize += aCompressLabelsScratchBufferSize[k];
+    }
 
     cudaError = cudaMalloc ((void **)&pUFCompressedLabelsScratchBufferDev[0], nTotalBatchedUFCompressLabelsScratchBufferDevSize);
     if (cudaError != cudaSuccess)
+    {
+        fprintf(stderr, "cudaMalloc pUFCompressedLabelsScratchBufferDev[0] for size %d failed with error code %d.\n", nTotalBatchedUFCompressLabelsScratchBufferDevSize, cudaError);
+        tearDown();
         return NPP_MEMORY_ALLOCATION_ERR;
+    }
 
     // Now allocate batch lists
 
@@ -519,11 +601,19 @@ int main(int argc, const char *argv[])
 
     cudaError = cudaMalloc ((void**)&pUFBatchSrcImageListDev, nBatchImageListBytes);
     if (cudaError != cudaSuccess)
+    {
+        fprintf(stderr, "cudaMalloc pUFBatchSrcImageListDev failed.\n");
+        tearDown();
         return NPP_MEMORY_ALLOCATION_ERR;
+    }
 
     cudaError = cudaMalloc ((void**)&pUFBatchSrcDstImageListDev, nBatchImageListBytes);
     if (cudaError != cudaSuccess)
+    {
+        fprintf(stderr, "cudaMalloc pUFBatchSrcDstImageListDev failed.\n");
+        tearDown();
         return NPP_MEMORY_ALLOCATION_ERR;
+    }
 
     pUFBatchSrcImageListHost = reinterpret_cast<NppiImageDescriptor *>(malloc(nBatchImageListBytes));
     pUFBatchSrcDstImageListHost = reinterpret_cast<NppiImageDescriptor *>(malloc(nBatchImageListBytes));
@@ -547,11 +637,19 @@ int main(int argc, const char *argv[])
     // Copy label generation batch lists from CPU to GPU
     cudaError = cudaMemcpyAsync(pUFBatchSrcImageListDev, pUFBatchSrcImageListHost, nBatchImageListBytes, cudaMemcpyHostToDevice, nppStreamCtx.hStream);
     if (cudaError != cudaSuccess)
+    {
+        fprintf(stderr, "cudaMemcpyAsync pUFBatchSrcImageListDev failed.\n");
+        tearDown();
         return NPP_MEMCPY_ERROR;
+    }
 
     cudaError = cudaMemcpyAsync(pUFBatchSrcDstImageListDev, pUFBatchSrcDstImageListHost, nBatchImageListBytes, cudaMemcpyHostToDevice, nppStreamCtx.hStream);
     if (cudaError != cudaSuccess)
+    {
+        fprintf(stderr, "cudaMemcpyAsync pUFBatchSrcDstImageListDev failed.\n");
+        tearDown();
         return NPP_MEMCPY_ERROR;
+    }
 
     // We use 8-way neighbor search throughout this example
     nppStatus = nppiLabelMarkersUFBatch_8u32u_C1R_Advanced_Ctx(pUFBatchSrcImageListDev, pUFBatchSrcDstImageListDev, 
@@ -559,7 +657,7 @@ int main(int argc, const char *argv[])
 
     if (nppStatus != NPP_SUCCESS)  
     {
-        printf("LabelMarkersUFBatch_8Way_8u32u failed.\n");
+        fprintf(stderr, "LabelMarkersUFBatch_8Way_8u32u failed.\n");
         tearDown();
         return -1;
     }
@@ -571,10 +669,16 @@ int main(int argc, const char *argv[])
         cudaError = cudaMemcpy2DAsync(pUFLabelHost[nImage], oSizeROI[nImage].width * sizeof(Npp32u), 
                                       pUFLabelDev[nImage], oSizeROI[nImage].width * sizeof(Npp32u), oSizeROI[nImage].width * sizeof(Npp32u), oSizeROI[nImage].height,
                                       cudaMemcpyDeviceToHost, nppStreamCtx.hStream);
+        if (cudaError != cudaSuccess)
+        {
+            fprintf(stderr, "cudaMemcpy2DAsync pUFLabelHost[%d] failed.\n", nImage);
+            tearDown();
+            return NPP_MEMCPY_ERROR;
+        }
     }
 
     // Wait for host image read backs to complete, not necessary if no need to synchronize
-    if ((cudaError = cudaStreamSynchronize(nppStreamCtx.hStream)) != cudaSuccess) 
+    if ((cudaError = cudaStreamSynchronize(nppStreamCtx.hStream)) != cudaSuccess)
     {
         printf ("Post label generation cudaStreamSynchronize failed\n");
         tearDown();
@@ -610,11 +714,19 @@ int main(int argc, const char *argv[])
     // Now allocate scratch buffer memory for batched label compression
     cudaError = cudaMalloc ((void**)&pUFBatchSrcDstScratchBufferListDev, NUMBER_OF_IMAGES * sizeof(NppiBufferDescriptor));
     if (cudaError != cudaSuccess)
+    {
+        fprintf(stderr, "cudaMalloc pUFBatchSrcDstScratchBufferListDev failed.\n");
+        tearDown();
         return NPP_MEMORY_ALLOCATION_ERR;
+    }
 
     cudaError = cudaMalloc ((void**)&pUFBatchPerImageCompressedCountListDev, NUMBER_OF_IMAGES * sizeof(Npp32u));
     if (cudaError != cudaSuccess)
+    {
+        fprintf(stderr, "cudaMalloc pUFBatchPerImageCompressedCountListDev failed.\n");
+        tearDown();
         return NPP_MEMORY_ALLOCATION_ERR;
+    }
 
     // Allocate host side scratch buffer point and size list and initialize with device scratch buffer pointers 
     pUFBatchSrcDstScratchBufferListHost = reinterpret_cast<NppiBufferDescriptor *>(malloc(NUMBER_OF_IMAGES * sizeof(NppiBufferDescriptor)));
@@ -646,13 +758,17 @@ int main(int argc, const char *argv[])
     // Copy compression batch scratch buffer list from CPU to GPU
     cudaError = cudaMemcpyAsync(pUFBatchSrcDstScratchBufferListDev, pUFBatchSrcDstScratchBufferListHost, NUMBER_OF_IMAGES * sizeof(NppiBufferDescriptor), cudaMemcpyHostToDevice, nppStreamCtx.hStream);
     if (cudaError != cudaSuccess)
+    {
+        fprintf(stderr, "cudaMemcpyAsync pUFBatchSrcDstScratchBufferListDev failed.\n");
+        tearDown();
         return NPP_MEMCPY_ERROR;
+    }
 
     nppStatus = nppiCompressMarkerLabelsUFBatch_32u_C1IR_Advanced_Ctx(pUFBatchSrcDstImageListDev, pUFBatchSrcDstScratchBufferListDev, pUFBatchPerImageCompressedCountListDev,
                                                                       NUMBER_OF_IMAGES, oMaxROISize, nMaxUFCompressedLabelsScratchBufferSize, nppStreamCtx);
     if (nppStatus != NPP_SUCCESS)  
     {
-        printf("BatchCompressedLabelMarkersUF_8Way_32u failed.\n");
+        fprintf(stderr, "BatchCompressedLabelMarkersUF_8Way_32u failed.\n");
         tearDown();
         return -1;
     }
@@ -663,10 +779,16 @@ int main(int argc, const char *argv[])
         cudaError = cudaMemcpy2DAsync(pUFLabelHost[nImage], oSizeROI[nImage].width * sizeof(Npp32u), 
                                       pUFLabelDev[nImage], oSizeROI[nImage].width * sizeof(Npp32u), oSizeROI[nImage].width * sizeof(Npp32u), oSizeROI[nImage].height,
                                       cudaMemcpyDeviceToHost, nppStreamCtx.hStream);
+        if (cudaError != cudaSuccess)
+        {
+            fprintf(stderr, "cudaMemcpy2DAsync pUFLabelHost[%d] failed.\n", nImage);
+            tearDown();
+            return NPP_MEMCPY_ERROR;
+        }
     }
 
     // Wait for host image read backs to complete, not necessary if no need to synchronize
-    if ((cudaError = cudaStreamSynchronize(nppStreamCtx.hStream)) != cudaSuccess) 
+    if ((cudaError = cudaStreamSynchronize(nppStreamCtx.hStream)) != cudaSuccess)
     {
         printf ("Post label compression cudaStreamSynchronize failed\n");
         tearDown();
@@ -702,12 +824,19 @@ int main(int argc, const char *argv[])
                                 NUMBER_OF_IMAGES * sizeof(Npp32u), cudaMemcpyDeviceToHost, nppStreamCtx.hStream);
     if (cudaError != cudaSuccess)
     {
+        fprintf(stderr, "cudaMemcpyAsync pUFBatchPerImageCompressedCountListHost failed.\n");
         tearDown();
         return NPP_MEMCPY_ERROR;
     }
 
     // Wait for host read back to complete
     cudaError = cudaStreamSynchronize(nppStreamCtx.hStream);
+    if (cudaError != cudaSuccess)
+    {
+        fprintf(stderr, "cudaStreamSynchronize failed.\n");
+        tearDown();
+        return NPP_MEMCPY_ERROR;
+    }
 
     printf("\n\n");
 
