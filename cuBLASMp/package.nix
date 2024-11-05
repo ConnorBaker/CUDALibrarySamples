@@ -4,10 +4,11 @@
   cuBLASMp,
   cuda_cudart,
   cuda_nvcc,
+  cudaOlder,
   lib,
   libcal ? null,
   libcublas,
-  libcublasmp,
+  libcublasmp ? null,
   mpi,
   nccl,
   pkg-config,
@@ -103,7 +104,7 @@ backendStdenv.mkDerivation {
       features in the math and image processing libraries cuBLAS, cuTENSOR,
       cuSPARSE, cuSOLVER, cuFFT, cuRAND, NPP and nvJPEG.
     '';
-    broken = libcal == null;
+    broken = cudaOlder "12" || libcal == null || libcublasmp == null;
     license = lib.licenses.bsd3;
     maintainers = with lib.maintainers; [ obsidian-systems-maintenance ] ++ lib.teams.cuda.members;
   };
