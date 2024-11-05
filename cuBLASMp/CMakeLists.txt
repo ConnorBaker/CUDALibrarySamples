@@ -69,25 +69,23 @@ function(build_sample sample_name)
     set_target_properties(${sample_name} PROPERTIES LINK_WHAT_YOU_USE TRUE)
 
     target_include_directories(${sample_name} PUBLIC
-        ${CMAKE_CURRENT_SOURCE_DIR}
-        ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES}
-        ${MPI_CXX_INCLUDE_DIRS}
         ${CAL_INCLUDE_DIRECTORIES}
-        ${CUBLASMP_INCLUDE_DIRECTORIES}
         ${CAL_MPI_INCLUDE_PATH}
+        ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES}
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        ${CUBLASMP_INCLUDE_DIRECTORIES}
+        ${MPI_CXX_INCLUDE_DIRS}
         ${NVSHMEM_INCLUDE_DIRECTORIES}
     )
 
     target_link_libraries(${sample_name} PUBLIC
-        cudart
-        ${CUBLASMP_LIBRARIES}
-        ${CAL_LIBRARIES}
-        ${MPI_CXX_LIBRARIES}
+        ${CAL_MPI_LIBRARIES}
         ${NVSHMEM_HOST_LIBRARIES}
         ${NVSHMEM_DEVICE_LIBRARIES}
-        nvidia-ml
-        m
-        ${CAL_MPI_LIBRARIES}
+        cal
+        cublasmp
+        CUDA::cudart
+        mpi
     )
 
     install(
