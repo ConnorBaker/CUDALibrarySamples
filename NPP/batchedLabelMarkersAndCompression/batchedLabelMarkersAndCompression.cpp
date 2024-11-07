@@ -46,6 +46,11 @@
 * Users Notice. 
 */
 
+#include <cstdint>
+#include <filesystem>
+#include <fstream>
+#include <iostream>
+namespace fs = std::filesystem;
 #include "batchedLabelMarkersAndCompression.h"
 
 // Note:  If you want to view these images we HIGHLY recommend using imagej which is free on the internet and works on most platforms 
@@ -123,84 +128,103 @@ void tearDown() // Clean up and tear down
     }
 }
 
-const std::string & Path = std::string("../images/");
+const std::string & InputPath = std::string("../images/");
+const std::string & OutputPath = std::string("./output_images/");
 
-const std::string & InputFile0 = Path + std::string("lena_512x512_8u.raw");
-const std::string & InputFile1 = Path + std::string("CT_skull_512x512_8u.raw");
-const std::string & InputFile2 = Path + std::string("PCB_METAL_509x335_8u.raw");
-const std::string & InputFile3 = Path + std::string("PCB2_1024x683_8u.raw");
-const std::string & InputFile4 = Path + std::string("PCB_1280x720_8u.raw");
+const std::string & InputFile0 = InputPath + std::string("lena_512x512_8u.raw");
+const std::string & InputFile1 = InputPath + std::string("CT_skull_512x512_8u.raw");
+const std::string & InputFile2 = InputPath + std::string("PCB_METAL_509x335_8u.raw");
+const std::string & InputFile3 = InputPath + std::string("PCB2_1024x683_8u.raw");
+const std::string & InputFile4 = InputPath + std::string("PCB_1280x720_8u.raw");
 
-const std::string & LabelMarkersOutputFile0 = Path + std::string("Lena_LabelMarkersUF_8Way_512x512_32u.raw");
-const std::string & LabelMarkersOutputFile1 = Path + std::string("CT_skull_LabelMarkersUF_8Way_512x512_32u.raw");
-const std::string & LabelMarkersOutputFile2 = Path + std::string("PCB_METAL_LabelMarkersUF_8Way_509x335_32u.raw");
-const std::string & LabelMarkersOutputFile3 = Path + std::string("PCB2_LabelMarkersUF_8Way_1024x683_32u.raw");
-const std::string & LabelMarkersOutputFile4 = Path + std::string("PCB_LabelMarkersUF_8Way_1280x720_32u.raw");
+const std::string & LabelMarkersOutputFile0 = OutputPath + std::string("Lena_LabelMarkersUF_8Way_512x512_32u.raw");
+const std::string & LabelMarkersOutputFile1 = OutputPath + std::string("CT_skull_LabelMarkersUF_8Way_512x512_32u.raw");
+const std::string & LabelMarkersOutputFile2 = OutputPath + std::string("PCB_METAL_LabelMarkersUF_8Way_509x335_32u.raw");
+const std::string & LabelMarkersOutputFile3 = OutputPath + std::string("PCB2_LabelMarkersUF_8Way_1024x683_32u.raw");
+const std::string & LabelMarkersOutputFile4 = OutputPath + std::string("PCB_LabelMarkersUF_8Way_1280x720_32u.raw");
 
-const std::string & CompressedMarkerLabelsOutputFile0 = Path + std::string("Lena_CompressedMarkerLabelsUF_8Way_512x512_32u.raw");
-const std::string & CompressedMarkerLabelsOutputFile1 = Path + std::string("CT_skull_CompressedMarkerLabelsUF_8Way_512x512_32u.raw");
-const std::string & CompressedMarkerLabelsOutputFile2 = Path + std::string("PCB_METAL_CompressedMarkerLabelsUF_8Way_509x335_32u.raw");
-const std::string & CompressedMarkerLabelsOutputFile3 = Path + std::string("PCB2_CompressedMarkerLabelsUF_8Way_1024x683_32u.raw");
-const std::string & CompressedMarkerLabelsOutputFile4 = Path + std::string("PCB_CompressedMarkerLabelsUF_8Way_1280x720_32u.raw");
+const std::string & CompressedMarkerLabelsOutputFile0 = OutputPath + std::string("Lena_CompressedMarkerLabelsUF_8Way_512x512_32u.raw");
+const std::string & CompressedMarkerLabelsOutputFile1 = OutputPath + std::string("CT_skull_CompressedMarkerLabelsUF_8Way_512x512_32u.raw");
+const std::string & CompressedMarkerLabelsOutputFile2 = OutputPath + std::string("PCB_METAL_CompressedMarkerLabelsUF_8Way_509x335_32u.raw");
+const std::string & CompressedMarkerLabelsOutputFile3 = OutputPath + std::string("PCB2_CompressedMarkerLabelsUF_8Way_1024x683_32u.raw");
+const std::string & CompressedMarkerLabelsOutputFile4 = OutputPath + std::string("PCB_CompressedMarkerLabelsUF_8Way_1280x720_32u.raw");
 
-const std::string & LabelMarkersBatchOutputFile0 = Path + std::string("Lena_LabelMarkersUFBatch_8Way_512x512_32u.raw");
-const std::string & LabelMarkersBatchOutputFile1 = Path + std::string("CT_skull_LabelMarkersUFBatch_8Way_512x512_32u.raw");
-const std::string & LabelMarkersBatchOutputFile2 = Path + std::string("PCB_METAL_LabelMarkersUFBatch_8Way_509x335_32u.raw");
-const std::string & LabelMarkersBatchOutputFile3 = Path + std::string("PCB2_LabelMarkersUFBatch_8Way_1024x683_32u.raw");
-const std::string & LabelMarkersBatchOutputFile4 = Path + std::string("PCB_LabelMarkersUFBatch_8Way_1280x720_32u.raw");
+const std::string & LabelMarkersBatchOutputFile0 = OutputPath + std::string("Lena_LabelMarkersUFBatch_8Way_512x512_32u.raw");
+const std::string & LabelMarkersBatchOutputFile1 = OutputPath + std::string("CT_skull_LabelMarkersUFBatch_8Way_512x512_32u.raw");
+const std::string & LabelMarkersBatchOutputFile2 = OutputPath + std::string("PCB_METAL_LabelMarkersUFBatch_8Way_509x335_32u.raw");
+const std::string & LabelMarkersBatchOutputFile3 = OutputPath + std::string("PCB2_LabelMarkersUFBatch_8Way_1024x683_32u.raw");
+const std::string & LabelMarkersBatchOutputFile4 = OutputPath + std::string("PCB_LabelMarkersUFBatch_8Way_1280x720_32u.raw");
 
 #ifdef CUDA11U1
-const std::string & CompressedMarkerLabelsBatchOutputFile0 = Path + std::string("Lena_CompressedMarkerLabelsUFBatch_8Way_512x512_32u.raw");
-const std::string & CompressedMarkerLabelsBatchOutputFile1 = Path + std::string("CT_skull_CompressedMarkerLabelsUFBatch_8Way_512x512_32u.raw");
-const std::string & CompressedMarkerLabelsBatchOutputFile2 = Path + std::string("PCB_METAL_CompressedMarkerLabelsUFBatch_8Way_509x335_32u.raw");
-const std::string & CompressedMarkerLabelsBatchOutputFile3 = Path + std::string("PCB2_CompressedMarkerLabelsUFBatch_8Way_1024x683_32u.raw");
-const std::string & CompressedMarkerLabelsBatchOutputFile4 = Path + std::string("PCB_CompressedMarkerLabelsUFBatch_8Way_1280x720_32u.raw");
+const std::string & CompressedMarkerLabelsBatchOutputFile0 = OutputPath + std::string("Lena_CompressedMarkerLabelsUFBatch_8Way_512x512_32u.raw");
+const std::string & CompressedMarkerLabelsBatchOutputFile1 = OutputPath + std::string("CT_skull_CompressedMarkerLabelsUFBatch_8Way_512x512_32u.raw");
+const std::string & CompressedMarkerLabelsBatchOutputFile2 = OutputPath + std::string("PCB_METAL_CompressedMarkerLabelsUFBatch_8Way_509x335_32u.raw");
+const std::string & CompressedMarkerLabelsBatchOutputFile3 = OutputPath + std::string("PCB2_CompressedMarkerLabelsUFBatch_8Way_1024x683_32u.raw");
+const std::string & CompressedMarkerLabelsBatchOutputFile4 = OutputPath + std::string("PCB_CompressedMarkerLabelsUFBatch_8Way_1280x720_32u.raw");
 #endif
 
 int 
 loadRaw8BitImage(Npp8u * pImage, int nWidth, int nHeight, int nImage)
 {
-    FILE * bmpFile;
-    size_t nSize;
+    FILE * bmpFile = nullptr;
+    size_t nSize = 0;
 
     if (nImage == 0)
     {
-        if (nWidth != 512 || nHeight != 512) 
+        if (nWidth != 512 || nHeight != 512)
             return -1;
-        fopen_s(&bmpFile, InputFile0.c_str(), "rb");
+        if (fopen_s(&bmpFile, InputFile0.c_str(), "rb") != 0 || bmpFile == NULL)
+        {
+            fprintf(stderr, "Failed to load input file %s\n", InputFile0.c_str());
+            return -1;
+        }
     }
     else if (nImage == 1)
     {
         if (nWidth != 512 || nHeight != 512) 
             return -1;
-        fopen_s(&bmpFile, InputFile1.c_str(), "rb");
+        if (fopen_s(&bmpFile, InputFile1.c_str(), "rb") != 0 || bmpFile == NULL)
+        {
+            fprintf(stderr, "Failed to load input file %s\n", InputFile1.c_str());
+            return -1;
+        }
     }
     else if (nImage == 2)
     {
         if (nWidth != 509 || nHeight != 335) 
             return -1;
-        fopen_s(&bmpFile, InputFile2.c_str(), "rb");
+        if (fopen_s(&bmpFile, InputFile2.c_str(), "rb") != 0 || bmpFile == NULL)
+        {
+            fprintf(stderr, "Failed to load input file %s\n", InputFile2.c_str());
+            return -1;
+        }
     }
     else if (nImage == 3)
     {
         if (nWidth != 1024 || nHeight != 683) 
             return -1;
-        fopen_s(&bmpFile, InputFile3.c_str(), "rb");
+        if (fopen_s(&bmpFile, InputFile3.c_str(), "rb") != 0 || bmpFile == NULL)
+        {
+            fprintf(stderr, "Failed to load input file %s\n", InputFile3.c_str());
+            return -1;
+        }
     }
     else if (nImage == 4)
     {
         if (nWidth != 1280 || nHeight != 720) 
             return -1;
-        fopen_s(&bmpFile, InputFile4.c_str(), "rb");
+        if (fopen_s(&bmpFile, InputFile4.c_str(), "rb") != 0 || bmpFile == NULL)
+        {
+            fprintf(stderr, "Failed to load input file %s\n", InputFile4.c_str());
+            return -1;
+        }
     }
     else
     {
-        printf ("Input file load failed.\n");
+        fprintf(stderr, "Input file not known.\n");
         return -1;
     }
 
-    if (bmpFile == NULL) 
-        return -1;
     nSize = fread(pImage, 1, nWidth * nHeight, bmpFile);
     if (nSize < nWidth * nHeight)
     {
@@ -246,6 +270,10 @@ int main(int argc, const char *argv[])
     NppStatus nppStatus;
     NppStreamContext nppStreamCtx;
     FILE * bmpFile;
+
+    // Make the OutputPath directory if it doesn't exist
+    const fs::path outputPath{OutputPath};
+    fs::create_directory(outputPath);
 
     for (int j = 0; j < params.numofbatch; j++)
     {
@@ -444,19 +472,32 @@ int main(int argc, const char *argv[])
                 return -1;
             }
 
-            if (nImage == 0)
-                fopen_s(&bmpFile, LabelMarkersOutputFile0.c_str(), "wb");
-            else if (nImage == 1)
-                fopen_s(&bmpFile, LabelMarkersOutputFile1.c_str(), "wb");
-            else if (nImage == 2)
-                fopen_s(&bmpFile, LabelMarkersOutputFile2.c_str(), "wb");
-            else if (nImage == 3)
-                fopen_s(&bmpFile, LabelMarkersOutputFile3.c_str(), "wb");
-            else if (nImage == 4)
-                fopen_s(&bmpFile, LabelMarkersOutputFile4.c_str(), "wb");
-
-            if (bmpFile == NULL) 
+            if (nImage == 0 && (fopen_s(&bmpFile, LabelMarkersOutputFile0.c_str(), "wb") != 0 || bmpFile == NULL))
+            {
+                fprintf(stderr, "Failed to save output file %s\n", LabelMarkersOutputFile0.c_str());
                 return -1;
+            }
+            else if (nImage == 1 && (fopen_s(&bmpFile, LabelMarkersOutputFile1.c_str(), "wb") != 0 || bmpFile == NULL))
+            {
+                fprintf(stderr, "Failed to save output file %s\n", LabelMarkersOutputFile1.c_str());
+                return -1;
+            }
+            else if (nImage == 2 && (fopen_s(&bmpFile, LabelMarkersOutputFile2.c_str(), "wb") != 0 || bmpFile == NULL))
+            {
+                fprintf(stderr, "Failed to save output file %s\n", LabelMarkersOutputFile2.c_str());
+                return -1;
+            }
+            else if (nImage == 3 && (fopen_s(&bmpFile, LabelMarkersOutputFile3.c_str(), "wb") != 0 || bmpFile == NULL))
+            {
+                fprintf(stderr, "Failed to save output file %s\n", LabelMarkersOutputFile3.c_str());
+                return -1;
+            }
+            else if (nImage == 4 && (fopen_s(&bmpFile, LabelMarkersOutputFile4.c_str(), "wb") != 0 || bmpFile == NULL))
+            {
+                fprintf(stderr, "Failed to save output file %s\n", LabelMarkersOutputFile4.c_str());
+                return -1;
+            }
+
             size_t nSize = 0;
             for (int j = 0; j < oSizeROI[nImage].height; j++)
             {
