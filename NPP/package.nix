@@ -4,7 +4,6 @@
   NPP,
   cuda_cudart,
   cuda_nvcc,
-  cudaOlder,
   lib,
   libnpp,
   runCommand,
@@ -16,10 +15,9 @@ let
     genAttrs
     recurseIntoAttrs
     ;
-  inherit (lib.fileset) toSource unions;
-  inherit (lib.lists) filter optionals;
+  inherit (lib.lists) filter;
   inherit (lib.meta) getExe;
-  inherit (lib.strings) hasPrefix optionalString;
+  inherit (lib.strings) optionalString;
 
   sampleNames =
     let
@@ -46,8 +44,8 @@ let
       postPatch = optionalString (sampleName == "batchedLabelMarkersAndCompression") ''
         substituteInPlace ./batchedLabelMarkersAndCompression.cpp \
           --replace-fail \
-            'const std::string & Path = std::string("../images/");' \
-            'const std::string & Path = std::string("${builtins.placeholder "out"}/images");'
+            'const std::string & InputPath = std::string("../images/");' \
+            'const std::string & InputPath = std::string("${builtins.placeholder "out"}/share/images/");'
       '';
 
       buildInputs = [
