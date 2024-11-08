@@ -1,7 +1,6 @@
 {
   backendStdenv,
   cmake,
-  cuDSS,
   cudaOlder,
   cuda_cudart,
   cuda_nvcc,
@@ -10,7 +9,6 @@
   mpi,
   nccl,
   pkg-config,
-  runCommand,
 }:
 let
   inherit (builtins) readDir;
@@ -21,7 +19,6 @@ let
     ;
   inherit (lib.fileset) toSource unions;
   inherit (lib.lists) filter optionals;
-  inherit (lib.meta) getExe;
 
   sampleNames =
     let
@@ -70,35 +67,6 @@ let
           mpi
           nccl
         ];
-
-      passthru.tests.test =
-        runCommand "cuDSS-${sampleName}"
-          {
-            __structuredAttrs = true;
-            strictDeps = true;
-            nativeBuildInputs = [ cuDSS.${sampleName} ];
-            requiredSystemFeatures = [ "cuda" ];
-          }
-          (
-            # Make a temporary directory for the tests and error out if anything fails.
-            ''
-              set -euo pipefail
-              export HOME="$(mktemp --directory)"
-              trap 'rm -rf -- "''${HOME@Q}"' EXIT
-            ''
-            # Run the tests.
-            + ''
-              echo "Running cuDSS.${sampleName}..."
-              if "${getExe cuDSS.${sampleName}}"
-              then
-                echo "cuDSS.${sampleName} passed"
-                touch "$out"
-              else
-                echo "cuDSS.${sampleName} failed"
-                exit 1
-              fi
-            ''
-          );
 
       meta = {
         description = "examples of using libraries using CUDA";

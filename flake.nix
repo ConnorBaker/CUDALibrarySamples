@@ -30,48 +30,13 @@
   outputs =
     inputs:
     let
-      inherit (builtins) readDir;
-      inherit (inputs.nixpkgs.lib.attrsets)
-        attrNames
-        getAttr
-        mapAttrs
-        optionalAttrs
-        recurseIntoAttrs
-        ;
+      inherit (inputs.nixpkgs.lib.attrsets) genAttrs recurseIntoAttrs;
       inherit (inputs.nixpkgs.lib.customisation) makeScope;
-      inherit (inputs.nixpkgs.lib.lists) concatMap optionals;
+      inherit (inputs.nixpkgs.lib.lists) optionals;
       inherit (inputs.nixpkgs.lib.filesystem) packagesFromDirectoryRecursive;
       inherit (inputs.nixpkgs.lib.fileset) unions toSource;
       inherit (inputs.flake-parts.lib) mkFlake;
-      inherit (inputs.cuda-packages) mkOverlay;
       inherit (inputs.cuda-packages.cuda-lib.utils) flattenDrvTree;
-
-      overlay =
-        let
-          files = readDir ./.;
-          dirs = concatMap (
-            filename: optionals (getAttr filename files == "directory") [ (./. + "/${filename}") ]
-          ) (attrNames files);
-          src = toSource {
-            root = ./.;
-            fileset = unions dirs;
-          };
-          overrideScopeFn = cudaFinal: _: {
-            cuda-library-samples = recurseIntoAttrs (
-              makeScope cudaFinal.newScope (
-                cudaLibrarySamplesFinal:
-                packagesFromDirectoryRecursive {
-                  inherit (cudaLibrarySamplesFinal) callPackage;
-                  directory = src;
-                }
-              )
-            );
-          };
-        in
-        _: prev: {
-          cudaPackages_11 = prev.cudaPackages_11.overrideScope overrideScopeFn;
-          cudaPackages_12 = prev.cudaPackages_12.overrideScope overrideScopeFn;
-        };
     in
     mkFlake { inherit inputs; } {
       systems = [
@@ -84,49 +49,89 @@
         inputs.treefmt-nix.flakeModule
       ];
 
-      flake.overlays.default = overlay;
+      flake.overlays.default = _: prev: {
+        cudaPackagesExtensions = prev.cudaPackagesExtensions or [ ] ++ [
+          (finalCudaPackages: _: {
+            cuda-library-samples = recurseIntoAttrs (
+              makeScope finalCudaPackages.newScope (
+                cudaLibrarySamplesFinal:
+                packagesFromDirectoryRecursive {
+                  inherit (cudaLibrarySamplesFinal) callPackage;
+                  directory = toSource {
+                    root = ./.;
+                    fileset = unions [
+                      ./cuBLAS
+                      ./cuBLASLt
+                      ./cuBLASMp
+                      ./cuDSS
+                      ./cuFFT
+                      ./NPP
+                    ];
+                  };
+                }
+              )
+            );
+          })
+        ];
+      };
 
       perSystem =
-        { config, system, ... }:
-        let
-          configs =
-            {
-              ada = "8.9";
-            }
-            // optionalAttrs (system == "aarch64-linux") {
-              orin = "8.7";
-              xavier = "7.2";
-            };
-
-          ourPkgs = mapAttrs (
-            _: capability:
-            import inputs.nixpkgs {
-              inherit system;
-              config = {
-                allowUnfree = true;
-                cudaSupport = true;
-                cudaCapabilities = [ capability ];
-              };
-              overlays = [
-                (mkOverlay { capabilities = [ capability ]; })
-                overlay
-              ];
-            }
-          ) configs;
-
-          ourCudaLibrarySamples = mapAttrs (name: _: {
-            cuda11 = ourPkgs.${name}.cudaPackages_11.cuda-library-samples;
-            cuda12 = ourPkgs.${name}.cudaPackages_12.cuda-library-samples;
-          }) configs;
-        in
         {
-          _module.args.pkgs = ourPkgs.ada;
-
-          checks = flattenDrvTree {
-            attrs = recurseIntoAttrs (mapAttrs (_: recurseIntoAttrs) ourCudaLibrarySamples);
+          config,
+          pkgs,
+          system,
+          ...
+        }:
+        {
+          _module.args.pkgs = import inputs.nixpkgs {
+            inherit system;
+            # TODO: Due to the way Nixpkgs is built in stages, the config attribute set is not re-evaluated.
+            # This is problematic for us because we use it to signal the CUDA capabilities to the overlay.
+            # The only way I've found to combat this is to use pkgs.extend, which is not ideal.
+            # TODO: This also means that Nixpkgs needs to be imported *with* the correct config attribute set
+            # from the start, unless they're willing to re-import Nixpkgs with the correct config.
+            config = {
+              allowUnfree = true;
+              cudaSupport = true;
+            };
+            overlays = [
+              inputs.cuda-packages.overlays.default
+              inputs.self.overlays.default
+            ];
           };
 
-          legacyPackages = ourPkgs;
+          legacyPackages = pkgs;
+
+          checks =
+            let
+              collectSamples =
+                realArch:
+                recurseIntoAttrs (
+                  genAttrs
+                    [
+                      "cudaPackages_11"
+                      "cudaPackages_12"
+                    ]
+                    (
+                      cudaPackagesName:
+                      recurseIntoAttrs {
+                        cuda-library-samples =
+                          recurseIntoAttrs
+                            pkgs.pkgsCuda.${realArch}.${cudaPackagesName}.cuda-library-samples;
+                      }
+                    )
+                );
+              tree = genAttrs (
+                [
+                  "sm_89"
+                ]
+                ++ optionals (pkgs.stdenv.hostPlatform.system == "aarch64-linux") [
+                  "sm_72"
+                  "sm_87"
+                ]
+              ) collectSamples;
+            in
+            flattenDrvTree (recurseIntoAttrs tree);
 
           pre-commit.settings.hooks = {
             # Formatter checks
