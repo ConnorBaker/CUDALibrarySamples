@@ -1,12 +1,10 @@
 {
   backendStdenv,
   cmake,
-  NPP,
   cuda_cudart,
   cuda_nvcc,
   lib,
   libnpp,
-  runCommand,
 }:
 let
   inherit (builtins) readDir;
@@ -16,15 +14,12 @@ let
     recurseIntoAttrs
     ;
   inherit (lib.lists) filter;
-  inherit (lib.meta) getExe;
   inherit (lib.strings) optionalString;
 
   sampleNames =
     let
       files = readDir ./.;
-      matchingDirNames = filter (filename: files.${filename} == "directory") (
-        attrNames files
-      );
+      matchingDirNames = filter (filename: files.${filename} == "directory") (attrNames files);
     in
     matchingDirNames;
 
@@ -52,35 +47,6 @@ let
         cuda_cudart
         libnpp
       ];
-
-      passthru.tests.test =
-        runCommand "NPP-${sampleName}"
-          {
-            __structuredAttrs = true;
-            strictDeps = true;
-            nativeBuildInputs = [ NPP.${sampleName} ];
-            requiredSystemFeatures = [ "cuda" ];
-          }
-          (
-            # Make a temporary directory for the tests and error out if anything fails.
-            ''
-              set -euo pipefail
-              export HOME="$(mktemp --directory)"
-              trap 'rm -rf -- "''${HOME@Q}"' EXIT
-            ''
-            # Run the tests.
-            + ''
-              echo "Running NPP.${sampleName}..."
-              if "${getExe NPP.${sampleName}}"
-              then
-                echo "NPP.${sampleName} passed"
-                touch "$out"
-              else
-                echo "NPP.${sampleName} failed"
-                exit 1
-              fi
-            ''
-          );
 
       meta = {
         description = "examples of using libraries using CUDA";

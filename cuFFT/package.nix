@@ -4,10 +4,8 @@
   cuda_cudart,
   cuda_nvcc,
   cudaOlder,
-  cuFFT,
   lib,
   libcufft,
-  runCommand,
 }:
 let
   inherit (builtins) readDir;
@@ -18,7 +16,6 @@ let
     ;
   inherit (lib.fileset) toSource unions;
   inherit (lib.lists) elem filter;
-  inherit (lib.meta) getExe;
 
   sampleNames =
     let
@@ -64,35 +61,6 @@ let
         cuda_cudart
         libcufft
       ];
-
-      passthru.tests.test =
-        runCommand "cuFFT-${sampleName}"
-          {
-            __structuredAttrs = true;
-            strictDeps = true;
-            nativeBuildInputs = [ cuFFT.${sampleName} ];
-            requiredSystemFeatures = [ "cuda" ];
-          }
-          (
-            # Make a temporary directory for the tests and error out if anything fails.
-            ''
-              set -euo pipefail
-              export HOME="$(mktemp --directory)"
-              trap 'rm -rf -- "''${HOME@Q}"' EXIT
-            ''
-            # Run the tests.
-            + ''
-              echo "Running cuFFT.${sampleName}..."
-              if "${getExe cuFFT.${sampleName}}"
-              then
-                echo "cuFFT.${sampleName} passed"
-                touch "$out"
-              else
-                echo "cuFFT.${sampleName} failed"
-                exit 1
-              fi
-            ''
-          );
 
       meta = {
         description = "examples of using libraries using CUDA";

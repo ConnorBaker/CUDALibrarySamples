@@ -61,6 +61,7 @@ backendStdenv.mkDerivation {
     libcal.out # With setup hook, equivalent to env.UCC_CONFIG_FILE = "${libcal.out}/share/ucc.conf";
   ];
 
+  # TODO(@connorbaker): Split these samples into separate derivations so we can build and run them separately.
   passthru.tests = genAttrs sampleNames (
     sampleName:
     runCommand "cuBLASMp-${sampleName}"

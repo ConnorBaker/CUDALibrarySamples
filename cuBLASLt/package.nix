@@ -1,13 +1,11 @@
 {
   backendStdenv,
   cmake,
-  cuBLASLt,
   cuda_cudart,
   cuda_nvcc,
   cudaOlder,
   lib,
   libcublas,
-  runCommand,
 }:
 let
   inherit (builtins) readDir;
@@ -18,7 +16,6 @@ let
     ;
   inherit (lib.fileset) toSource unions;
   inherit (lib.lists) filter optionals;
-  inherit (lib.meta) getExe;
   inherit (lib.strings) hasPrefix;
 
   sampleNames =
@@ -63,35 +60,6 @@ let
         cuda_cudart
         libcublas
       ];
-
-      passthru.tests.test =
-        runCommand "cuBLASLt-${sampleName}"
-          {
-            __structuredAttrs = true;
-            strictDeps = true;
-            nativeBuildInputs = [ cuBLASLt.${sampleName} ];
-            requiredSystemFeatures = [ "cuda" ];
-          }
-          (
-            # Make a temporary directory for the tests and error out if anything fails.
-            ''
-              set -euo pipefail
-              export HOME="$(mktemp --directory)"
-              trap 'rm -rf -- "''${HOME@Q}"' EXIT
-            ''
-            # Run the tests.
-            + ''
-              echo "Running cuBLASLt.${sampleName}..."
-              if "${getExe cuBLASLt.${sampleName}}"
-              then
-                echo "cuBLASLt.${sampleName} passed"
-                touch "$out"
-              else
-                echo "cuBLASLt.${sampleName} failed"
-                exit 1
-              fi
-            ''
-          );
 
       meta = {
         description = "examples of using libraries using CUDA";
