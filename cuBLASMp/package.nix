@@ -1,7 +1,6 @@
 {
   backendStdenv,
   cmake,
-  cuBLASMp,
   cuda_cudart,
   cuda_nvcc,
   cudaOlder,
@@ -10,9 +9,7 @@
   libcublas,
   libcublasmp ? null,
   mpi,
-  nccl,
   pkg-config,
-  runCommand,
 }:
 let
   inherit (builtins) readDir;
@@ -20,10 +17,11 @@ let
     attrNames
     genAttrs
     getOutput
+    recurseIntoAttrs
     ;
   inherit (lib.lists) concatMap optionals;
-  inherit (lib.meta) getExe';
   inherit (lib.strings) hasSuffix removeSuffix;
+  inherit (lib.fileset) toSource unions;
 
   sampleNames =
     let
@@ -36,77 +34,60 @@ let
       ) (attrNames files);
     in
     matchingDirNames;
-in
-backendStdenv.mkDerivation {
-  pname = "cuda-library-samples-cuBLASMp";
-  version = "0-unstable-2024-10-15";
 
-  src = ./.;
-
-  nativeBuildInputs = [
-    cmake
-    cuda_nvcc
-    pkg-config
-  ];
-
-  buildInputs = [
-    (getOutput "include" libcublas)
-    cuda_cudart
-    libcal
-    libcublasmp
-    mpi
-  ];
-
-  propagatedBuildInputs = [
-    libcal.out # With setup hook, equivalent to env.UCC_CONFIG_FILE = "${libcal.out}/share/ucc.conf";
-  ];
-
-  # TODO(@connorbaker): Split these samples into separate derivations so we can build and run them separately.
-  passthru.tests = genAttrs sampleNames (
+  buildSample =
     sampleName:
-    runCommand "cuBLASMp-${sampleName}"
-      {
-        # Requires access to network and sys.
-        __structuredAttrs = true;
-        strictDeps = true;
-        nativeBuildInputs = [
-          cuBLASMp
-          mpi
-          nccl
-        ];
-        requiredSystemFeatures = [ "cuda" ];
-      }
-      (
-        # Make a temporary directory for the tests and error out if anything fails.
-        ''
-          set -euo pipefail
-          export HOME="$(mktemp --directory)"
-          trap 'rm -rf -- "''${HOME@Q}"' EXIT
-        ''
-        # Run the tests.
-        + ''
-          echo "Running cuBLASMp.${sampleName}..."
-          if "${getExe' mpi "mpirun"}" -n 2 "${getExe' cuBLASMp sampleName}" -m 100 -n 100 -k 100 -verbose 1
-          then
-            echo "cuBLASMp.${sampleName} passed"
-            touch "$out"
-          else
-            echo "cuBLASMp.${sampleName} failed"
-            exit 1
-          fi
-        ''
-      )
-  );
+    backendStdenv.mkDerivation {
+      pname = "cuda-library-samples-cuBLASMp-${sampleName}";
+      version = "0-unstable-2024-10-15";
 
-  meta = {
-    description = "examples of using libraries using CUDA";
-    longDescription = ''
-      CUDA Library Samples contains examples demonstrating the use of
-      features in the math and image processing libraries cuBLAS, cuTENSOR,
-      cuSPARSE, cuSOLVER, cuFFT, cuRAND, NPP and nvJPEG.
-    '';
-    broken = cudaOlder "12" || libcal == null || libcublasmp == null;
-    license = lib.licenses.bsd3;
-    maintainers = with lib.maintainers; [ obsidian-systems-maintenance ] ++ lib.teams.cuda.members;
-  };
-}
+      src = toSource {
+        root = ./.;
+        fileset = unions [
+          ./CMakeLists.txt
+          ./helpers.h
+          ./matrix_generator.hxx
+          (./. + "/${sampleName}.cu")
+        ];
+      };
+
+      # To ensure we only build one sample at a time, remove lines from CMakeLists.txt which include build_sample
+      # and append a single line for our sample at the end.
+      postPatch = ''
+        sed -i ./CMakeLists.txt -e 's/^build_sample(".*")$//g'
+        echo 'build_sample("${sampleName}")' >> ./CMakeLists.txt
+      '';
+
+      nativeBuildInputs = [
+        cmake
+        cuda_nvcc
+        pkg-config
+      ];
+
+      buildInputs = [
+        (getOutput "include" libcublas)
+        cuda_cudart
+        libcal
+        libcublasmp
+        mpi
+      ];
+
+      propagatedBuildInputs = [
+        libcal.out # With setup hook, equivalent to env.UCC_CONFIG_FILE = "${libcal.out}/share/ucc.conf";
+      ];
+
+      meta = {
+        description = "examples of using libraries using CUDA";
+        longDescription = ''
+          CUDA Library Samples contains examples demonstrating the use of
+          features in the math and image processing libraries cuBLAS, cuTENSOR,
+          cuSPARSE, cuSOLVER, cuFFT, cuRAND, NPP and nvJPEG.
+        '';
+        mainProgram = "sample_cublasLt_${sampleName}";
+        broken = cudaOlder "12" || libcal == null || libcublasmp == null;
+        license = lib.licenses.bsd3;
+        maintainers = with lib.maintainers; [ obsidian-systems-maintenance ] ++ lib.teams.cuda.members;
+      };
+    };
+in
+recurseIntoAttrs (genAttrs sampleNames buildSample)
