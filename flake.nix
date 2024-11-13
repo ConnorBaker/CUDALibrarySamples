@@ -31,10 +31,7 @@
     inputs:
     let
       inherit (inputs.nixpkgs.lib.attrsets) genAttrs recurseIntoAttrs;
-      inherit (inputs.nixpkgs.lib.customisation) makeScope;
       inherit (inputs.nixpkgs.lib.lists) optionals;
-      inherit (inputs.nixpkgs.lib.filesystem) packagesFromDirectoryRecursive;
-      inherit (inputs.nixpkgs.lib.fileset) unions toSource;
       inherit (inputs.flake-parts.lib) mkFlake;
       inherit (inputs.cuda-packages.cuda-lib.utils) flattenDrvTree;
     in
@@ -49,31 +46,7 @@
         inputs.treefmt-nix.flakeModule
       ];
 
-      flake.overlays.default = _: prev: {
-        cudaPackagesExtensions = prev.cudaPackagesExtensions or [ ] ++ [
-          (finalCudaPackages: _: {
-            cuda-library-samples = recurseIntoAttrs (
-              makeScope finalCudaPackages.newScope (
-                cudaLibrarySamplesFinal:
-                packagesFromDirectoryRecursive {
-                  inherit (cudaLibrarySamplesFinal) callPackage;
-                  directory = toSource {
-                    root = ./.;
-                    fileset = unions [
-                      ./cuBLAS
-                      ./cuBLASLt
-                      ./cuBLASMp
-                      ./cuDSS
-                      ./cuFFT
-                      ./NPP
-                    ];
-                  };
-                }
-              )
-            );
-          })
-        ];
-      };
+      flake.overlays.default = import ./overlay.nix;
 
       perSystem =
         {
@@ -105,7 +78,7 @@
           checks =
             let
               collectSamples =
-                realArch:
+                pkgsCuda: realArch:
                 recurseIntoAttrs (
                   genAttrs
                     [
@@ -114,24 +87,31 @@
                     ]
                     (
                       cudaPackagesName:
+                      let
+                        cudaPackages = pkgsCuda.${realArch}.${cudaPackagesName};
+                      in
                       recurseIntoAttrs {
-                        cuda-library-samples =
-                          recurseIntoAttrs
-                            pkgs.pkgsCuda.${realArch}.${cudaPackagesName}.cuda-library-samples;
+                        tests = recurseIntoAttrs {
+                          inherit (cudaPackages.tests) cuda-library-samples;
+                        };
                       }
                     )
                 );
-              tree = genAttrs (
-                [
-                  "sm_89"
-                ]
-                ++ optionals (pkgs.stdenv.hostPlatform.system == "aarch64-linux") [
-                  "sm_72"
-                  "sm_87"
-                ]
-              ) collectSamples;
+              tree = recurseIntoAttrs {
+                pkgsCuda = recurseIntoAttrs (
+                  genAttrs (
+                    [
+                      "sm_89"
+                    ]
+                    ++ optionals (pkgs.stdenv.hostPlatform.system == "aarch64-linux") [
+                      "sm_72"
+                      "sm_87"
+                    ]
+                  ) (collectSamples pkgs.pkgsCuda)
+                );
+              };
             in
-            flattenDrvTree (recurseIntoAttrs tree);
+            flattenDrvTree tree;
 
           pre-commit.settings.hooks = {
             # Formatter checks
