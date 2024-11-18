@@ -57,6 +57,7 @@ let
         '';
         mainProgram = sampleName;
         license = lib.licenses.bsd3;
+        broken = sampleName != "batchedLabelMarkersAndCompression";
         maintainers = with lib.maintainers; [ obsidian-systems-maintenance ] ++ lib.teams.cuda.members;
       };
     };
