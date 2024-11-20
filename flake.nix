@@ -7,7 +7,7 @@
         git-hooks-nix.follows = "git-hooks-nix";
         treefmt-nix.follows = "treefmt-nix";
       };
-      url = "github:ConnorBaker/cuda-packages";
+      url = "path:///home/connorbaker/cuda-packages";
     };
     flake-parts = {
       inputs.nixpkgs-lib.follows = "nixpkgs";
