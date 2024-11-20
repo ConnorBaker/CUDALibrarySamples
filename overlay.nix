@@ -7,6 +7,7 @@ let
     mapAttrs
     recurseIntoAttrs
     ;
+  inherit (final.lib.cuda.utils) flattenDrvTree;
   inherit (final.lib.customisation) makeScope;
   inherit (final.lib.fileset) toSource unions;
   inherit (final.lib.filesystem) packagesFromDirectoryRecursive;
@@ -17,8 +18,6 @@ let
   cudaExtension =
     finalCudaPackages: prevCudaPackages:
     let
-      inherit (finalCudaPackages.cuda-lib.utils) flattenDrvTree;
-
       mkTestSuite =
         sampleSuiteName: attrs:
         let
