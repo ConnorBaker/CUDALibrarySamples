@@ -1,30 +1,10 @@
 {
   inputs = {
-    cuda-packages = {
-      inputs = {
-        nixpkgs.follows = "nixpkgs";
-        flake-parts.follows = "flake-parts";
-        git-hooks-nix.follows = "git-hooks-nix";
-        treefmt-nix.follows = "treefmt-nix";
-      };
-      url = "path:///home/connorbaker/cuda-packages";
-    };
-    flake-parts = {
-      inputs.nixpkgs-lib.follows = "nixpkgs";
-      url = "github:hercules-ci/flake-parts";
-    };
-    nixpkgs.url = "github:nixos/nixpkgs";
-    git-hooks-nix = {
-      inputs = {
-        nixpkgs-stable.follows = "nixpkgs";
-        nixpkgs.follows = "nixpkgs";
-      };
-      url = "github:cachix/git-hooks.nix";
-    };
-    treefmt-nix = {
-      inputs.nixpkgs.follows = "nixpkgs";
-      url = "github:numtide/treefmt-nix";
-    };
+    cuda-packages.url = "github:ConnorBaker/cuda-packages";
+    flake-parts.follows = "cuda-packages/flake-parts";
+    nixpkgs.follows = "cuda-packages/nixpkgs";
+    git-hooks-nix.follows = "cuda-packages/git-hooks-nix";
+    treefmt-nix.follows = "cuda-packages/treefmt-nix";
   };
 
   outputs =
@@ -79,24 +59,13 @@
             let
               collectSamples =
                 pkgsCuda: realArch:
-                recurseIntoAttrs (
-                  genAttrs
-                    [
-                      "cudaPackages_11"
-                      "cudaPackages_12"
-                    ]
-                    (
-                      cudaPackagesName:
-                      let
-                        cudaPackages = pkgsCuda.${realArch}.${cudaPackagesName};
-                      in
-                      recurseIntoAttrs {
-                        tests = recurseIntoAttrs {
-                          inherit (cudaPackages.tests) cuda-library-samples;
-                        };
-                      }
-                    )
-                );
+                recurseIntoAttrs {
+                  cudaPackages = recurseIntoAttrs {
+                    tests = recurseIntoAttrs {
+                      inherit (pkgsCuda.${realArch}.cudaPackages.tests) cuda-library-samples;
+                    };
+                  };
+                };
               tree = recurseIntoAttrs {
                 pkgsCuda = recurseIntoAttrs (
                   genAttrs (
@@ -104,7 +73,6 @@
                       "sm_89"
                     ]
                     ++ optionals (pkgs.stdenv.hostPlatform.system == "aarch64-linux") [
-                      "sm_72"
                       "sm_87"
                     ]
                   ) (collectSamples pkgs.pkgsCuda)
