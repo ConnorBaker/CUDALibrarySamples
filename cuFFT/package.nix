@@ -72,7 +72,7 @@ let
         mainProgram = "${sampleName}_example";
 
         broken =
-          # These two fail on CUDA 11.8 
+          # These two fail on CUDA 11.8
           (
             cudaOlder "12"
             && elem sampleName [
