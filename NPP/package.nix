@@ -1,5 +1,5 @@
 {
-  backendStdenv,
+  cudaStdenv,
   cmake,
   cuda_cudart,
   cuda_nvcc,
@@ -25,9 +25,9 @@ let
 
   buildSample =
     sampleName:
-    backendStdenv.mkDerivation {
+    cudaStdenv.mkDerivation {
       pname = "cuda-library-samples-NPP-${sampleName}";
-      version = "0-unstable-2024-10-15";
+      version = "0-unstable-2024-12-22";
 
       src = ./. + "/${sampleName}";
 

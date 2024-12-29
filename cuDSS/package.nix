@@ -1,5 +1,5 @@
 {
-  backendStdenv,
+  cudaStdenv,
   cmake,
   cudaOlder,
   cuda_cudart,
@@ -31,9 +31,9 @@ let
 
   buildSample =
     sampleName:
-    backendStdenv.mkDerivation {
+    cudaStdenv.mkDerivation {
       pname = "cuda-library-samples-cuDSS-${sampleName}";
-      version = "0-unstable-2024-10-15";
+      version = "0-unstable-2024-12-22";
 
       src = toSource {
         root = ./.;

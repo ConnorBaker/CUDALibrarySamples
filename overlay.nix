@@ -26,6 +26,7 @@ let
           mkTestRunner =
             drv:
             let
+              inherit (drv) name;
               runCommand =
                 if sampleSuiteName == "cuBLASMp" then
                   ''"${getExe' final.mpi "mpirun"}" -n 2 "${getExe drv}" -m 100 -n 100 -k 100 -verbose 1''
@@ -34,24 +35,24 @@ let
             in
             if drv.meta.broken then
               ''
-                echo "Skipping ${drv.name} because it is marked broken"
-                skippedTests+=( "${drv.name}" )
+                echo "Skipping ${name} because it is marked broken"
+                skippedTests+=( "${name}" )
               ''
             else if !drv.meta.available then
               ''
-                echo "Skipping ${drv.name} because it is not available"
-                skippedTests+=( "${drv.name}" )
+                echo "Skipping ${name} because it is not available"
+                skippedTests+=( "${name}" )
               ''
             else
               ''
-                echo "Running ${drv.name}"
+                echo "Running ${name}"
                 if "${runCommand}"
                 then
-                  echo "${drv.name} passed"
-                  passedTests+=( "${drv.name}" )
+                  echo "${name} passed"
+                  passedTests+=( "${name}" )
                 else
-                  echo "${drv.name} failed"
-                  failedTests+=( "${drv.name}" )
+                  echo "${name} failed"
+                  failedTests+=( "${name}" )
                 fi
               '';
         in
@@ -65,7 +66,7 @@ let
             strictDeps = true;
             __structuredAttrs = true;
           };
-          name = "cuda${finalCudaPackages.cudaMajorMinorVersion}-tests-cuda-library-samples-${sampleSuiteName}";
+          name = "${finalCudaPackages.cudaStdenv.cudaNamePrefix}-tests-cuda-library-samples-${sampleSuiteName}";
           runtimeInputs =
             drvs
             ++ optionals (sampleSuiteName == "cuBLASMp") [
